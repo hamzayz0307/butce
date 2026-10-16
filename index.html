@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Kişisel bütçe: harcamalar, faturalar, taksitler ve birikim hedefleri.">
+  <meta name="theme-color" content="#F1F4F0" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0F1513" media="(prefers-color-scheme: dark)">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Bütçe">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <title>Bütçe</title>
+  <script type="module" src="/src/main.js"></script>
+</head>
+<body>
+  <div class="app">
+    <header class="top" id="top"></header>
+    <main id="view"></main>
+  </div>
+  <nav class="tabbar" id="tabbar"></nav>
+  <dialog id="sheet" aria-labelledby="sheet-title"><div id="sheet-inner"></div></dialog>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <input type="file" id="import-file" accept="application/json,.json" hidden>
+  <noscript>Bu uygulama JavaScript gerektirir. / This app needs JavaScript.</noscript>
+</body>
+</html>

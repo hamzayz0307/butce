@@ -1,0 +1,24 @@
+{
+  "name": "butce",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Kişisel bütçe uygulaması: harcamalar, faturalar, taksitler ve birikim hedefleri.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vite": "^8.3.4",
+    "vitest": "^5.0.5"
+  },
+  "dependencies": {
+    "@fontsource-variable/bricolage-grotesque": "^5.3.0",
+    "@fontsource-variable/manrope": "^5.3.0"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  }
+}
