@@ -21,6 +21,7 @@ A personal budgeting app for Turkey: daily safe-to-spend, bills and subscription
 - **Reports**: income vs spending by month, spending by category, where most money went, net worth over time.
 - **Excel export**: CSV for a year or everything (`;` and decimal comma in Turkish, so Excel opens it directly).
 - **Backup**: export and restore all data as JSON.
+- **PIN lock**: a 4-digit PIN when the app opens and after a minute in the background (device-only, stored as a salted PBKDF2 hash). It's a privacy screen, not encryption.
 
 ## Run locally
 
@@ -53,6 +54,7 @@ src/
   export.js           CSV export
   money.js            exchange rates, gold units
   period.js           payday-based budget months
+  lock.js             PIN lock
   views/              Overview, Activity, Payments, Wallet, Reports
   styles.css
 tests/                Vitest unit tests
@@ -65,6 +67,5 @@ For now, data is stored in the browser's `localStorage` on the device. `src/stor
 ## Roadmap
 
 - Supabase: sign-in, sync across devices, row-level security
-- Deploy on Vercel
 - Gemini: receipt photo → expenses, monthly AI summary (`ai.parseReceipt` placeholder in `src/store.js`)
 - App Store / Google Play build with Capacitor

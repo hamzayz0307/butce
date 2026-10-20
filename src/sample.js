@@ -31,7 +31,7 @@ const PREV_FACTOR = { food: 0.72, transport: 1.25 };
 export async function loadSample() {
   await store.wipe({ keepSettings: true });
   await refresh(); await ensureCategories();
-  await store.saveSettings({ expected_income: 42000 });
+  await store.saveSettings({ expected_income: 50000 });
   const K = key => catByKey(key).id;
   const now = new Date(), k0 = curMonth(), k1 = addMonths(k0, -1), k2 = addMonths(k0, -2), dToday = now.getDate();
   const day = (key, d) => `${key}-${pad(Math.min(d, daysInMonth(key)))}`;
@@ -52,7 +52,7 @@ export async function loadSample() {
 
   for (const key of [k1, k0]) {
     const isCur = key === k0;
-    await store.insert('transactions', { type: 'income', amount: 42000, category_id: K('salary'), note: 'Maaş', date: day(key, 1), card_id: null, account_id: bank.id });
+    await store.insert('transactions', { type: 'income', amount: 50000, category_id: K('salary'), note: 'Maaş', date: day(key, 1), card_id: null, account_id: bank.id });
     if (!isCur || dToday >= 3) {
       await store.insert('transactions', { type: 'transfer', amount: 3000, to_amount: 3000, account_id: bank.id, to_account_id: vadeli.id, category_id: null, note: '', date: day(key, 3) });
     }

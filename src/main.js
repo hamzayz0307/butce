@@ -10,7 +10,7 @@ import { curPeriod } from './period.js';
 import { parseQuick } from './parser.js';
 import { render } from './render.js';
 import { txListHtml } from './views/activity.js';
-import { openSheet, closeSheet, sheetForm } from './sheet.js';
+import { openSheet, closeSheet, sheetForm, toast } from './sheet.js';
 import {
   openAdd, renderQuickPreview, txForm, updateTxFormBits, billForm, instForm, updateInstFormBits,
   cardForm, goalForm, goalMoneyForm, limitsForm, openSettings, catOptions, openCats, catForm,
@@ -23,6 +23,53 @@ import {
 } from './actions.js';
 import { loadSample } from './sample.js';
 import { downloadCsv } from './export.js';
+import { store } from './store.js';
+import { lockEnabled, showLock, isLocked, pinPad, setPin, removePin, checkPin, LOCK_AFTER_MS } from './lock.js';
+
+/* ---------- PIN lock ---------- */
+const waitText = ms => t('pin_wait', { s: Math.ceil(ms / 1000) });
+
+// Ask for a new PIN twice, then save it
+function newPinFlow(doneMsg, firstSub = t('pin_new_sub'), firstErr = false) {
+  openSheet(t('lock_set'), '<div id="pinhost"></div>', 'settings');
+  const host = $('#pinhost');
+  const pad = pinPad(host, {
+    title: t('pin_new'), sub: firstSub,
+    onDone: first => {
+      pinPad(host, {
+        title: t('pin_again'),
+        onDone: async second => {
+          if (second !== first) { newPinFlow(doneMsg, t('pin_mismatch'), true); return true; }
+          await setPin(first);
+          openSettings(); toast(doneMsg);
+          return true;
+        }
+      });
+      return true;
+    }
+  });
+  if (firstErr) pad.setSub(firstSub, true);
+}
+
+// Ask for the current PIN before changing or removing it
+function verifyThen(title, next) {
+  openSheet(title, '<div id="pinhost"></div>', 'settings');
+  pinPad($('#pinhost'), {
+    title: t('pin_current'),
+    onDone: async pin => {
+      const r = await checkPin(pin);
+      if (r.ok) { next(); return true; }
+      return r.wait ? waitText(r.wait) : t('pin_wrong', { n: r.left });
+    }
+  });
+}
+
+async function lockNow() {
+  closeSheet();
+  $('#view').innerHTML = '';
+  await showLock(async () => { await store.wipe(); location.reload(); });
+  render();
+}
 
 const goTo = (tab, payTab) => {
   state.tab = tab;
@@ -79,6 +126,9 @@ const ACTS = {
   repyear: el => { state.repYear = (state.repYear || Number(curPeriod().slice(0, 4))) + Number(el.dataset.d); state.repSel = null; render(); },
   repsel: el => { state.repSel = el.dataset.k; render(); },
   csv: el => downloadCsv(el.dataset.year ? Number(el.dataset.year) : null),
+  pinset: () => newPinFlow(t('lock_saved')),
+  pinchange: () => verifyThen(t('lock_change'), () => newPinFlow(t('lock_changed'))),
+  pinoff: () => verifyThen(t('lock_off'), () => { removePin(); openSettings(); toast(t('lock_removed')); }),
   editacc: el => openSheet(t('edit_account'), accountForm(accountById(el.dataset.id))),
   acctx: el => { closeSheet(); state.txFilter = { q: '', type: 'all', cat: null, acc: el.dataset.id }; goTo('tx'); },
   clearacc: () => { state.txFilter.acc = null; render(); },
@@ -187,5 +237,15 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
   await ensureCategories();
   state.month = curPeriod();
   recordNetWorth();
-  render();
+  if (lockEnabled()) await lockNow();
+  else render();
 })();
+
+// Blur the screen while the app is in the background; ask for the PIN after a minute away
+let hiddenAt = 0;
+document.addEventListener('visibilitychange', () => {
+  if (!lockEnabled() || isLocked()) return;
+  if (document.hidden) { hiddenAt = Date.now(); document.body.classList.add('shielded'); return; }
+  if (Date.now() - hiddenAt > LOCK_AFTER_MS) lockNow();
+  else document.body.classList.remove('shielded');
+});

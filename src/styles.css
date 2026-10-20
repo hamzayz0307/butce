@@ -231,4 +231,25 @@ dialog#sheet::backdrop{background:rgba(8,18,15,.5)}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 @media (max-width:380px){.top h1,.month-btn{font-size:19px}.top .icon-btn{width:34px}.today-link{padding:5px 8px}}
 @media (max-width:340px){.today-link{display:none}}
+/* lock screen and PIN pad */
+.lock{position:fixed;inset:0;z-index:100;background:var(--paper);display:grid;place-items:center;padding:24px 16px calc(24px + env(safe-area-inset-bottom));overflow:auto}
+body.is-locked{overflow:hidden}
+body.shielded .app,body.shielded .tabbar{filter:blur(16px)}
+.pin{width:100%;max-width:320px;margin:0 auto;text-align:center}
+.pin-logo{display:block;margin:0 auto 6px;border-radius:14px}
+.pin-title{font:600 22px/1.2 var(--display);margin:8px 0 6px}
+.pin-sub{min-height:22px;margin:0 0 18px;font-size:14px;color:var(--muted)}
+.pin-sub.err{color:var(--neg);font-weight:600}
+.pin-note{margin:0 0 18px;color:var(--muted);line-height:1.5;text-align:left}
+.pin-dots{display:flex;justify-content:center;gap:18px;margin-bottom:26px}
+.pin-dots i{display:block;width:14px;height:14px;border-radius:50%;border:2px solid var(--ink)}
+.pin-dots i.on{background:var(--ink)}
+.pin-keys{display:grid;grid-template-columns:repeat(3,72px);justify-content:center;gap:12px 22px}
+.pin-keys button{width:72px;height:72px;border-radius:50%;border:0;background:var(--chip);color:var(--ink);font:600 26px var(--display);display:grid;place-items:center}
+.pin-keys button:active{background:var(--line)}
+.pin-keys button[data-k=back]{background:transparent}
+.pin-forgot{display:block;margin:18px auto 0}
+.pin.shake .pin-dots{animation:shake .35s}
+@keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
+@media (max-height:620px){.pin-keys button{width:60px;height:60px}.pin-keys{grid-template-columns:repeat(3,60px);gap:8px 18px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}

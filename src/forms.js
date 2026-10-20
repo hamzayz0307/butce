@@ -12,6 +12,7 @@ import { FX, GOLD_UNITS, rates, rateTRY, isBaseCurrency, ratesUpdatedText } from
 import { GOAL_EMOJIS, CAT_EMOJIS, CAT_COLORS, FALLBACK_KEYS } from './constants.js';
 import { ico, opt, field, amountInput } from './views/components.js';
 import { openSheet } from './sheet.js';
+import { lockEnabled, lockSupported } from './lock.js';
 
 // Hidden categories are left out, unless the entry already uses one
 const catOptions = (type, sel) => catsOf(type).filter(c => !c.hidden || c.id === sel).map(c => opt(c.id, `${c.emoji} ${catName(c)}`, c.id === sel)).join('');
@@ -441,6 +442,11 @@ export function openSettings() {
     <div class="set-group"><h4>${t('s_cats')}</h4><div style="display:grid;gap:8px">
       <button class="btn ghost" data-act="cats">${t('manage_cats')}</button>
       <button class="btn ghost" data-act="limits">${t('edit_limits')}</button></div></div>
+    <div class="set-group"><h4>${t('s_lock')}</h4>
+      <p class="hint" style="margin:0 0 10px">${lockEnabled() ? t('lock_on_state') + ' ' : ''}${t('lock_hint')}</p>
+      ${!lockSupported() ? `<p class="hint">${t('lock_unsupported')}</p>` : lockEnabled()
+        ? `<div style="display:grid;gap:8px"><button class="btn ghost" data-act="pinchange">${t('lock_change')}</button><button class="btn ghost" data-act="pinoff">${t('lock_off')}</button></div>`
+        : `<button class="btn ghost wide" data-act="pinset">${t('lock_set')}</button>`}</div>
     <div class="set-group"><h4>${t('s_data')}</h4><p class="hint" style="margin:0 0 10px">${t('s_storage')}</p>
       <div style="display:grid;gap:8px">
         <button class="btn ghost" data-act="export">${t('s_export')}</button>
