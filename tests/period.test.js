@@ -10,7 +10,7 @@ const setStart = d => { state.settings = { ...state.settings, period_start_day: 
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date(2026, 9, 20, 12)); // 20 Oct 2026
-  state.data = { transactions: [], categories: [], bills: [], installments: [], cards: [], goals: [] };
+  state.data = { transactions: [], categories: [], bills: [], installments: [], cards: [], goals: [], accounts: [] };
 });
 afterEach(() => vi.useRealTimers());
 

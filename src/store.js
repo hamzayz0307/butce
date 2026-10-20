@@ -12,7 +12,7 @@
    ===================================================================== */
 import { uid } from './utils.js';
 
-export const TABLES = ['transactions', 'categories', 'bills', 'installments', 'cards', 'goals'];
+export const TABLES = ['transactions', 'categories', 'bills', 'installments', 'cards', 'goals', 'accounts'];
 
 const KEY = 'butce.v1';
 const empty = () => ({ tables: Object.fromEntries(TABLES.map(t => [t, []])), settings: {} });

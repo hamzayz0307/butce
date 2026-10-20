@@ -6,7 +6,7 @@ import { curPeriod, periodTitle, periodLength, dayInPeriod, startDay } from '../
 import { fmt, pct } from '../format.js';
 import { monthStats, spentByCatUpTo, upcomingItems, isEmptyApp, billPaidTx } from '../model.js';
 import { GUILLOCHE, sec, ico, dueLabel } from './components.js';
-import { billRow, loadChart } from './payments.js';
+import { billRow, loadChart, cardPayBtn } from './payments.js';
 
 export function viewHome() {
   if (isEmptyApp()) return emptyHome();
@@ -94,9 +94,9 @@ function figures(st) {
 function upcomingSec() {
   const items = upcomingItems();
   const body = items.length ? `<div class="list">${items.map(it => it.kind === 'bill' ? billRow(it.b, it.key, true) : `
-      <button class="row" data-act="goto-cards">${ico({ emoji: '💳', color: '#4C7DBF' })}
-        <div class="row-main"><div class="row-title">${esc(t('card_due', { name: it.c.name }))}</div><div class="row-meta">${dueLabel(it.due)}</div></div>
-        <div class="row-amt">${fmt(it.amount)}<small>${t('est_statement')}</small></div></button>`).join('')}</div>`
+      <div class="row">${ico({ emoji: '💳', color: '#4C7DBF' })}
+        <button class="row-main" data-act="goto-cards"><div class="row-title">${esc(t('card_due', { name: it.c.name }))}</div><div class="row-meta">${dueLabel(it.due)}</div></button>
+        <div class="row-amt">${fmt(it.amount)}<small>${t('est_statement')}</small></div>${cardPayBtn(it.c, it.stmt, it.amount, null)}</div>`).join('')}</div>`
     : `<p class="empty-line">${t('no_upcoming')}</p>`;
   return sec(t('sec_upcoming'), body);
 }

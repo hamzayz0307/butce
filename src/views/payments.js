@@ -5,7 +5,7 @@ import { esc, r2, today, addMonths } from '../utils.js';
 import { fmt, pct, monthName, monthShort, dateShort } from '../format.js';
 import {
   portionFor, portionsInMonth, planEnd, planPaidThrough, planRemaining,
-  billsForMonth, billDue, billPaidTx, nextStatement, dueFor, statementAmount
+  billsForMonth, billDue, billPaidTx, nextStatement, prevStatement, dueFor, statementAmount, cardPaidTx
 } from '../model.js';
 import { ico, dueLabel } from './components.js';
 
@@ -13,6 +13,23 @@ export function viewPay() {
   const b = (v, label) => `<button data-act="paytab" data-v="${v}" aria-pressed="${state.payTab === v}">${label}</button>`;
   const body = state.payTab === 'bills' ? payBills() : state.payTab === 'inst' ? payInst() : payCards();
   return `<div class="seg" role="group">${b('bills', t('seg_bills'))}${b('inst', t('seg_inst'))}${b('cards', t('seg_cards'))}</div>${body}`;
+}
+
+// The last closed statement while it can still be paid (or was paid)
+function stmtRow(c, now) {
+  const stmt = prevStatement(c, now), due = dueFor(c, stmt), paid = cardPaidTx(c, stmt);
+  const amount = paid ? paid.amount : statementAmount(c, stmt);
+  if (due < now || amount <= 0) return '';
+  return `<div class="row">${ico({ emoji: '🧾', color: '#4C7DBF' })}
+    <div class="row-main"><div class="row-title">${esc(t('stmt_row', { name: c.name }))}</div>
+      <div class="row-meta">${paid ? esc(t('paid_on', { date: dateShort(paid.date) })) : dueLabel(due)}</div></div>
+    <div class="row-amt">${fmt(amount)}</div>${cardPayBtn(c, stmt, amount, paid)}</div>`;
+}
+
+export function cardPayBtn(c, stmt, amount, paid) {
+  return paid
+    ? `<button class="pill-paid" data-act="edittx" data-id="${paid.id}">${t('paid')}</button>`
+    : `<button class="btn ghost small" data-act="paycard" data-id="${c.id}" data-stmt="${stmt}" data-amt="${amount}" aria-label="${esc(t('mark_paid_aria', { name: t('stmt_row', { name: c.name }) }))}">${t('paid_it')}</button>`;
 }
 
 export function billRow(b, key, withDue) {
@@ -95,7 +112,7 @@ function payCards() {
       <div class="row-main"><div class="row-title">${esc(c.name)}</div>
         <div class="row-meta">${t('card_next', { date: dateShort(next) })}, ${t('card_due_on', { date: dateShort(dueFor(c, next)) })}</div>
         ${lim > 0 ? `<div class="row-meta">${ucls ? `<span class="${ucls}">${usageText}</span>` : usageText}</div><div class="bar"><i class="${ucls}" style="width:${Math.min(usage, 100).toFixed(1)}%"></i></div>` : ''}
-      </div><div class="row-amt">${fmt(amount)}<small>${t('card_cycle')}</small></div></button>`;
+      </div><div class="row-amt">${fmt(amount)}<small>${t('card_cycle')}</small></div></button>${stmtRow(c, now)}`;
   }).join('');
   return `<div class="list" style="margin-top:14px">${rows}</div><button class="btn ghost wide" data-act="newcard" style="margin-top:12px">${t('add_card')}</button>`;
 }

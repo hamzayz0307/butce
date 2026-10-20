@@ -1,7 +1,7 @@
 // Budget math: installments, bills, card statements, goals and period totals.
 // Pure functions over `state.data` — no DOM, so they are covered by tests.
 // "key" is a budget period key (see period.js); card statements use calendar months.
-import { state } from './state.js';
+import { state, accountById, isSavingAcc } from './state.js';
 import { r2, pad, today, shiftDays, addMonths, daysInMonth, monthDiff } from './utils.js';
 import { curPeriod, inPeriod, dueInPeriod, dayInPeriod } from './period.js';
 
@@ -70,6 +70,33 @@ export function firstMonthFor(cardId, purchaseDate) {
   return purchaseDate <= stmtDateIn(card, k) ? k : addMonths(k, 1);
 }
 
+/* ---------- Accounts ---------- */
+// Opening balance plus everything booked to the account
+export function accountBalance(acc) {
+  let b = Number(acc.opening_balance) || 0;
+  for (const x of state.data.transactions) {
+    if (x.account_id === acc.id) {
+      if (x.type === 'income') b += x.amount;
+      else if (x.type === 'expense' || x.type === 'card_payment' || x.type === 'transfer') b -= x.amount;
+    }
+    if (x.type === 'transfer' && x.to_account_id === acc.id) b += x.to_amount ?? x.amount;
+  }
+  return r2(b);
+}
+
+// How much a transfer adds to (or takes from) savings in the budget:
+// into a savings account counts as saved, back out counts as un-saved.
+export function savedFlow(x) {
+  if (x.type !== 'transfer') return 0;
+  const fromSaving = isSavingAcc(accountById(x.account_id)), toSaving = isSavingAcc(accountById(x.to_account_id));
+  if (!fromSaving && toSaving) return x.amount;
+  if (fromSaving && !toSaving) return -(x.to_amount ?? x.amount);
+  return 0;
+}
+
+// The payment made for a card statement, if it was marked as paid
+export const cardPaidTx = (card, stmt) => state.data.transactions.find(x => x.type === 'card_payment' && x.card_id === card.id && x.stmt === stmt);
+
 /* ---------- Goals ---------- */
 export function goalSaved(g) {
   let s = Number(g.initial_saved) || 0;
@@ -87,7 +114,9 @@ export function monthStats(key) {
     txCount++;
     if (x.type === 'income') actualIncome += x.amount;
     else if (x.type === 'saving') saved += x.amount;
-    else { txSpent += x.amount; byCat[x.category_id] = (byCat[x.category_id] || 0) + x.amount; }
+    else if (x.type === 'transfer') saved += savedFlow(x);
+    else if (x.type === 'expense') { txSpent += x.amount; byCat[x.category_id] = (byCat[x.category_id] || 0) + x.amount; }
+    // card_payment: paying the statement isn't new spending — the purchases were counted when made
   }
   const portions = portionsInMonth(key);
   let inst = 0;
@@ -132,7 +161,7 @@ export function upcomingItems() {
   for (const c of state.data.cards) {
     for (const s of [prevStatement(c, now), nextStatement(c, now)]) {
       const due = dueFor(c, s), amount = statementAmount(c, s);
-      if (due >= now && due <= horizon && amount > 0) items.push({ kind: 'card', c, stmt: s, due, amount });
+      if (due >= now && due <= horizon && amount > 0 && !cardPaidTx(c, s)) items.push({ kind: 'card', c, stmt: s, due, amount });
     }
   }
   return items.sort((a, b) => a.due.localeCompare(b.due));

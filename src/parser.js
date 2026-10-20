@@ -2,7 +2,7 @@
 import { KEYWORDS } from './constants.js';
 import { norm, today, shiftDays, toNumber } from './utils.js';
 import { capFirst } from './format.js';
-import { state, catById, catByKey, catName, visibleCatsOf, fallbackCat } from './state.js';
+import { state, catById, catByKey, catName, visibleCatsOf, fallbackCat, spendAccounts } from './state.js';
 
 // Lowercase, fold Turkish letters, keep only letters, digits and single spaces
 const clean = s => norm(s).replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -52,6 +52,27 @@ export function matchCategory(text, type) {
   return null;
 }
 
+// "250 migros bonus" → paid with the Bonus card; "80 taksi nakit" → from the Nakit account.
+// Returns the card/account and the description without its name.
+export function takePayName(note) {
+  const words = note.split(' ').filter(Boolean), cleaned = words.map(clean);
+  const cands = [
+    ...state.data.cards.map(c => ({ card_id: c.id, name: c.name })),
+    ...spendAccounts().map(a => ({ account_id: a.id, name: a.name }))
+  ];
+  for (const c of cands) {
+    const w = clean(c.name).split(' ').filter(Boolean);
+    if (!w.length) continue;
+    for (let i = 0; i + w.length <= cleaned.length; i++) {
+      if (w.every((v, j) => cleaned[i + j] === v)) {
+        const { name, ...ids } = c;
+        return { ...ids, note: [...words.slice(0, i), ...words.slice(i + w.length)].join(' ') };
+      }
+    }
+  }
+  return null;
+}
+
 export function parseQuick(text) {
   return text.split(/[,;\n]+|\s+ve\s+|\s+and\s+/i).map(s => s.trim()).filter(Boolean).map(parseOne);
 }
@@ -74,7 +95,9 @@ export function parseOne(raw) {
   if (!(amount > 0)) return { error: true, raw };
   s = s.replace(am[0], ' ');
 
-  const note = s.replace(/\s+/g, ' ').trim();
+  let note = s.replace(/\s+/g, ' ').trim();
+  const via = takePayName(note);
+  if (via && !(via.card_id && type === 'income')) note = via.note;
   let catId = null;
   const learned = learnedCat(note);
   if (learned && (!type || learned.type === type)) { type = learned.type; catId = learned.id; }
@@ -84,6 +107,8 @@ export function parseOne(raw) {
     raw, type, amount, date,
     note: capFirst(note),
     count: type === 'expense' && count >= 2 && count <= 36 ? count : 1,
-    category_id: catId
+    category_id: catId,
+    card_id: type === 'expense' && via?.card_id ? via.card_id : null,
+    account_id: via?.account_id || null
   };
 }

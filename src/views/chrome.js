@@ -8,8 +8,8 @@ import { svg, IC } from './components.js';
 export function renderTop() {
   const el = $('#top');
   const settingsBtn = `<button class="icon-btn" data-act="settings" aria-label="${t('settings')}">${svg(IC.sliders)}</button>`;
-  if (state.tab === 'goals') {
-    el.innerHTML = `<h1>${t('tab_goals')}</h1><span class="spacer"></span>${settingsBtn}`;
+  if (state.tab === 'wallet') {
+    el.innerHTML = `<h1>${t('tab_wallet')}</h1><span class="spacer"></span>${settingsBtn}`;
     return;
   }
   const notNow = state.month !== curPeriod();
@@ -29,6 +29,6 @@ export function renderTabs() {
   bar.innerHTML = `<div class="tabbar-inner">
     ${tab('home', IC.home, t('tab_home'))}${tab('tx', IC.list, t('tab_tx'))}
     <button class="tab-add" data-act="add" aria-label="${t('add')}">${svg(IC.plus, 26)}</button>
-    ${tab('pay', IC.cal, t('tab_pay'))}${tab('goals', IC.target, t('tab_goals'))}</div>`;
+    ${tab('pay', IC.cal, t('tab_pay'))}${tab('wallet', IC.wallet, t('tab_wallet'))}</div>`;
   bar.setAttribute('aria-label', t('app'));
 }

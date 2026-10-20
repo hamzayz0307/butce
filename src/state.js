@@ -11,7 +11,8 @@ export const DEFAULT_SETTINGS = {
   currency: 'TRY',
   expected_income: null,
   usd_rate: null,
-  default_card_id: null
+  default_card_id: null,
+  default_account_id: null
 };
 
 export const state = {
@@ -38,4 +39,17 @@ export const visibleCatsOf = type => catsOf(type).filter(c => !c.hidden);
 export const fallbackCat = type => catByKey(FALLBACK_KEYS[type]);
 export const cardById = id => state.data.cards.find(c => c.id === id);
 export const goalById = id => state.data.goals.find(g => g.id === id);
+export const accountById = id => state.data.accounts.find(a => a.id === id);
+export const accountsList = () => [...state.data.accounts].sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
+export const ACC_EMOJI = { cash: '💵', bank: '🏦', savings: '🐖' };
+export const accEmoji = a => ACC_EMOJI[a?.kind] || '🏦';
+// Money set aside: transfers into these count as savings in the budget
+export const isSavingAcc = a => !!a && a.kind !== 'cash' && a.kind !== 'bank';
+// Accounts that everyday income and spending can use
+export const spendAccounts = () => accountsList().filter(a => !isSavingAcc(a));
+// Used for quick entry and bills marked as paid: the chosen default, else the first cash/bank account
+export const defaultAccount = () => {
+  const a = accountById(state.settings.default_account_id);
+  return a && !isSavingAcc(a) ? a : spendAccounts()[0] || null;
+};
 export const defaultCard = () => state.data.cards.find(c => c.id === state.settings.default_card_id) || state.data.cards[0] || null;

@@ -13,6 +13,7 @@ A personal budgeting app for Turkey: daily safe-to-spend, bills and subscription
 - **Installments (taksit)**: monthly amount, what's left to pay, and the load on the next 6 months. Purchases after the card's statement day start next month.
 - **Credit cards**: statement and due dates, estimated statement, limit usage.
 - **Category limits** and a comparison with the same point last month.
+- **Accounts & transfers** (Wallet tab): cash, bank and savings balances that update from each entry; transfers into savings count as saved; card statements can be marked as paid from an account.
 - **Savings goals**: how much to put aside each month, with a USD equivalent.
 - **Backup**: export and restore all data as JSON.
 
@@ -44,7 +45,7 @@ src/
   actions.js          saving, deleting, backup
   forms.js, sheet.js  bottom sheets and forms
   sample.js           sample data
-  views/              Overview, Activity, Payments, Goals
+  views/              Overview, Activity, Payments, Wallet
   styles.css
 tests/                Vitest unit tests
 ```

@@ -1,9 +1,12 @@
 // Sheets with forms: add entry (quick / detailed), bills, installments, cards, goals, limits, settings.
-import { state, catById, catName, catsOf, goalById, defaultCard } from './state.js';
+import {
+  state, catById, catName, catsOf, goalById, cardById, defaultCard, accountById, accountsList, spendAccounts,
+  defaultAccount, accEmoji, isSavingAcc
+} from './state.js';
 import { t, LANG } from './i18n.js';
 import { $, esc, today, addMonths, toNumber } from './utils.js';
-import { fmt, monthName, numIn } from './format.js';
-import { firstMonthFor } from './model.js';
+import { fmt, monthName, numIn, dateShort } from './format.js';
+import { firstMonthFor, dueFor, accountBalance } from './model.js';
 import { startDay, MAX_START_DAY } from './period.js';
 import { GOAL_EMOJIS, CAT_EMOJIS, CAT_COLORS, FALLBACK_KEYS } from './constants.js';
 import { ico, opt, field, amountInput } from './views/components.js';
@@ -20,7 +23,7 @@ export const formErr = (f, msg) => { const e = f.querySelector('[data-role=err]'
 export { catOptions };
 
 /* ---------- Add entry ---------- */
-export function openAdd(mode = 'quick') {
+export function openAdd(mode = 'quick', draft = {}) {
   const seg = `<div class="seg" role="group" style="margin-top:8px">
     <button data-act="addmode" data-v="quick" aria-pressed="${mode === 'quick'}">${t('quick')}</button>
     <button data-act="addmode" data-v="detailed" aria-pressed="${mode === 'detailed'}">${t('detailed')}</button></div>`;
@@ -28,7 +31,7 @@ export function openAdd(mode = 'quick') {
     ? `${field(t('quick_label'), `<textarea id="quick" autofocus placeholder="${esc(t('quick_ph'))}" autocomplete="off" spellcheck="false"></textarea>`)}
        <p class="hint">${t('quick_help')}</p><div id="qp" class="qp"></div>
        <div class="form-actions"><button class="btn primary" data-act="quicksave" disabled id="qsave">${t('quick_none')}</button></div>`
-    : txForm(null);
+    : txForm(null, draft);
   state.quickItems = [];
   state.quickOverrides = {};
   openSheet(t('new_entry'), seg + body);
@@ -40,9 +43,12 @@ export function renderQuickPreview() {
   $('#qp').innerHTML = items.length ? `<div class="list">${items.map((x, i) => {
     if (x.error) return `<div class="row"><div class="row-main"><div class="row-meta"><span class="neg">${esc(t('no_amount', { raw: x.raw }))}</span></div></div></div>`;
     const c = catById(x.category_id);
-    const meta = x.count > 1
-      ? `${t('quick_inst_meta', { n: x.count, amt: fmt(x.amount / x.count) })}${card ? ', ' + t('quick_card', { card: card.name }) : ''}`
-      : (x.date !== today() ? t('yesterday') : '');
+    const via = x.card_id ? cardById(x.card_id) : x.account_id ? accountById(x.account_id) : null;
+    const instCard = x.card_id ? via : card;
+    const meta = [
+      x.date !== today() ? t('yesterday') : '',
+      x.count > 1 ? `${t('quick_inst_meta', { n: x.count, amt: fmt(x.amount / x.count) })}${instCard ? ', ' + t('quick_card', { card: instCard.name }) : ''}` : (via ? via.name : '')
+    ].filter(Boolean).join(', ');
     return `<div class="row">${ico(c)}<div class="row-main"><div class="row-title">${esc(x.note || catName(c))}</div>${meta ? `<div class="row-meta">${esc(meta)}</div>` : ''}
         <select data-qi="${i}" aria-label="${t('category')}">${catOptions(x.type, x.category_id)}</select></div>
       <div class="row-amt ${x.type === 'income' ? 'amt-in' : ''}">${x.type === 'income' ? '+' : '−'}${fmt(x.amount)}</div></div>`;
@@ -53,43 +59,141 @@ export function renderQuickPreview() {
 }
 
 /* ---------- Transaction ---------- */
-export function txForm(x) {
-  const type = x?.type || 'expense';
-  if (x && x.type === 'saving') {
-    const g = goalById(x.goal_id);
-    return `<form data-form="saving" data-id="${x.id}" class="form" novalidate>
-      <p class="hint" style="margin-top:4px">${esc(t('money_to', { name: g?.name || t('goal_cat') }))}</p>
-      ${field(t('amount'), amountInput('amount', Math.abs(x.amount)))}
-      ${field(t('date'), `<input type="date" name="date" value="${x.date}" required>`)}
-      ${formActions('tx', x.id)}</form>`;
-  }
+// Where money came from or went to. Values: 'a:<account id>', 'c:<card id>' or '' (not said).
+export function payOptions(type, sel) {
+  const accs = spendAccounts(), cards = type === 'expense' ? state.data.cards : [];
+  const none = opt('', accs.length ? t('no_account') : t('cash'), !sel);
+  const a = accs.map(x => opt('a:' + x.id, `${accEmoji(x)} ${x.name}`, sel === 'a:' + x.id)).join('');
+  const c = cards.map(x => opt('c:' + x.id, `💳 ${x.name}`, sel === 'c:' + x.id)).join('');
+  return accs.length ? a + c + none : none + c;
+}
+const paySel = x => (x?.card_id ? 'c:' + x.card_id : x?.account_id ? 'a:' + x.account_id : '');
+const defaultPay = () => (defaultAccount() ? 'a:' + defaultAccount().id : '');
+const accOptions = sel => accountsList().map(a => opt(a.id, `${accEmoji(a)} ${a.name}`, a.id === sel)).join('');
+const dateInput = v => `<input type="date" name="date" value="${v || today()}" required>`;
+
+// Expense / Income / Transfer switch. Changing it redraws the form, keeping what was typed.
+function typeSeg(type, withTransfer) {
   const radio = (v, label) => `<label><input class="sr" type="radio" name="type" value="${v}" ${type === v ? 'checked' : ''}><span>${label}</span></label>`;
+  return `<div class="seg" role="radiogroup" style="margin-top:14px">${radio('expense', t('type_exp'))}${radio('income', t('type_inc'))}${withTransfer ? radio('transfer', t('type_transfer')) : ''}</div>`;
+}
+
+// `x` is an existing entry to edit; `draft` carries typed values when switching type
+export function txForm(x, draft = {}) {
+  const type = x?.type || draft.type || 'expense';
+  if (type === 'saving') return savingForm(x);
+  if (type === 'transfer') return transferForm(x, draft);
+  if (type === 'card_payment') return cardPayForm(x);
   const isNew = !x;
-  const payment = isNew && state.data.cards.length ? `<div class="grid2" data-role="pay">
-      ${field(t('payment'), `<select name="card_id">${cardOptions(null, t('cash'))}</select>`)}
-      ${field(t('installments'), `<select name="count" disabled>${[1, 2, 3, 4, 5, 6, 9, 12, 18, 24].map(n => opt(n, n === 1 ? t('single') : String(n), n === 1)).join('')}</select>`)}
-    </div><p class="hint" data-role="instprev"></p>` : '';
+  const sel = isNew ? (draft.pay ?? defaultPay()) : paySel(x);
+  const showPay = spendAccounts().length > 0 || (type === 'expense' && state.data.cards.length > 0);
+  const payField = field(type === 'income' ? t('account') : t('payment'), `<select name="pay">${payOptions(type, sel)}</select>`);
+  const withCount = showPay && isNew && type === 'expense' && state.data.cards.length > 0;
+  const pay = !showPay ? '' : withCount
+    ? `<div class="grid2" data-role="pay">${payField}
+        ${field(t('installments'), `<select name="count" disabled>${[1, 2, 3, 4, 5, 6, 9, 12, 18, 24].map(n => opt(n, n === 1 ? t('single') : String(n), n === 1)).join('')}</select>`)}
+      </div><p class="hint" data-role="instprev"></p>`
+    : payField;
   return `<form data-form="tx" data-id="${x?.id || ''}" class="form" novalidate>
-    <div class="seg" role="radiogroup" style="margin-top:14px">${radio('expense', t('type_exp'))}${radio('income', t('type_inc'))}</div>
-    ${field(t('amount'), amountInput('amount', x?.amount))}
-    ${field(t('category'), `<select name="category_id">${catOptions(type, x?.category_id)}</select>`)}
-    ${field(t('note'), `<input name="note" value="${esc(x?.note || '')}" placeholder="${esc(t('note_ph'))}" autocomplete="off">`)}
-    ${field(t('date'), `<input type="date" name="date" value="${x?.date || today()}" required>`)}
-    ${payment}${formActions('tx', x?.id)}</form>`;
+    ${isNew ? typeSeg(type, true) : (x.type === 'expense' || x.type === 'income' ? typeSeg(type, false) : '')}
+    ${field(t('amount'), amountInput('amount', x?.amount ?? draft.amount))}
+    ${field(t('category'), `<select name="category_id">${catOptions(type, x?.category_id ?? draft.category_id)}</select>`)}
+    ${field(t('note'), `<input name="note" value="${esc(x?.note ?? draft.note ?? '')}" placeholder="${esc(t('note_ph'))}" autocomplete="off">`)}
+    ${field(t('date'), dateInput(x?.date || draft.date))}
+    ${pay}${formActions('tx', x?.id)}</form>`;
+}
+
+// What's typed so far, to carry over when the type changes
+export function formDraft(f, type) {
+  return {
+    type, amount: f.amount?.value ?? '', note: f.note?.value ?? '', date: f.date?.value,
+    pay: f.pay?.value, from: f.from?.value, to: f.to?.value
+  };
+}
+
+function savingForm(x) {
+  const g = goalById(x.goal_id);
+  return `<form data-form="saving" data-id="${x.id}" class="form" novalidate>
+    <p class="hint" style="margin-top:4px">${esc(t('money_to', { name: g?.name || t('goal_cat') }))}</p>
+    ${field(t('amount'), amountInput('amount', Math.abs(x.amount)))}
+    ${field(t('date'), dateInput(x.date))}
+    ${formActions('tx', x.id)}</form>`;
+}
+
+function transferForm(x, draft) {
+  const accs = accountsList(), isNew = !x;
+  if (accs.length < 2) {
+    return `<form data-form="transfer" class="form" novalidate>${isNew ? typeSeg('transfer', true) : ''}
+      <div class="empty" style="margin-top:14px;background:var(--paper)"><p>${t('transfer_need_two')}</p>
+      <button type="button" class="btn primary" data-act="newacc">${t('add_account')}</button></div></form>`;
+  }
+  const from = x?.account_id || draft.from || defaultAccount()?.id || accs[0].id;
+  const to = x?.to_account_id || (draft.to && draft.to !== from ? draft.to : '') || accs.find(a => a.id !== from && isSavingAcc(a))?.id || accs.find(a => a.id !== from).id;
+  return `<form data-form="transfer" data-id="${x?.id || ''}" class="form" novalidate>
+    ${isNew ? typeSeg('transfer', true) : ''}
+    ${field(t('amount'), amountInput('amount', x?.amount ?? draft.amount))}
+    <div class="grid2">${field(t('from_acc'), `<select name="from">${accOptions(from)}</select>`)}
+      ${field(t('to_acc'), `<select name="to">${accOptions(to)}</select>`)}</div>
+    <p class="hint" data-role="saveprev"></p>
+    ${field(t('note'), `<input name="note" value="${esc(x?.note ?? draft.note ?? '')}" placeholder="${esc(t('transfer_note_ph'))}" autocomplete="off">`)}
+    ${field(t('date'), dateInput(x?.date || draft.date))}
+    ${formActions('tx', x?.id)}</form>`;
+}
+
+// `ctx` for a new payment: { card_id, stmt, amount }
+export function cardPayForm(x, ctx = {}) {
+  const card = cardById(x?.card_id || ctx.card_id), stmt = x?.stmt || ctx.stmt;
+  const sel = x ? (x.account_id ? 'a:' + x.account_id : '') : defaultPay();
+  return `<form data-form="cardpay" data-id="${x?.id || ''}" data-card="${card?.id || ''}" data-stmt="${stmt}" class="form" novalidate>
+    <p class="hint" style="margin-top:4px">${esc(t('stmt_line', { name: card?.name || '', stmt: dateShort(stmt), due: card ? dateShort(dueFor(card, stmt)) : '' }))}</p>
+    ${field(t('amount'), amountInput('amount', x?.amount ?? ctx.amount))}
+    ${spendAccounts().length ? field(t('account'), `<select name="pay">${payOptions('income', sel)}</select>`) : ''}
+    ${field(t('date'), dateInput(x?.date))}
+    <p class="hint">${t('card_pay_hint')}</p>
+    ${formActions('tx', x?.id)}</form>`;
 }
 
 // Live updates while the user fills the detailed form
 export function updateTxFormBits(f) {
-  const type = f.type.value || 'expense';
-  const pay = f.querySelector('[data-role=pay]');
-  if (!pay) return;
-  pay.style.display = type === 'expense' ? '' : 'none';
-  const cardSel = f.card_id, countSel = f.count;
-  countSel.disabled = !cardSel.value;
-  if (!cardSel.value) countSel.value = '1';
+  if (f.dataset.form === 'transfer') {
+    const out = f.querySelector('[data-role=saveprev]');
+    if (!out || !f.from) return;
+    const fromS = isSavingAcc(accountById(f.from.value)), toS = isSavingAcc(accountById(f.to.value));
+    out.textContent = f.from.value === f.to.value ? t('err_same_acc') : !fromS && toS ? t('transfer_in_hint') : fromS && !toS ? t('transfer_out_hint') : '';
+    return;
+  }
+  const countSel = f.count;
+  if (!countSel) return;
+  const sel = f.pay?.value || '';
+  countSel.disabled = !sel.startsWith('c:');
+  if (countSel.disabled) countSel.value = '1';
   const n = Number(countSel.value), amt = toNumber(f.amount.value), prev = f.querySelector('[data-role=instprev]');
-  prev.textContent = (type === 'expense' && n > 1 && amt > 0)
-    ? t('inst_preview', { amt: fmt(amt / n), month: monthName(firstMonthFor(cardSel.value, f.date.value || today())) }) : '';
+  prev.textContent = n > 1 && amt > 0
+    ? t('inst_preview', { amt: fmt(amt / n), month: monthName(firstMonthFor(sel.slice(2), f.date.value || today())) }) : '';
+}
+
+/* ---------- Accounts ---------- */
+export function accountForm(a) {
+  const kind = a?.kind || (spendAccounts().length ? 'bank' : 'cash');
+  const radio = k => `<label><input class="sr" type="radio" name="kind" value="${k}" ${kind === k ? 'checked' : ''}><span>${t('kind_' + k)}</span></label>`;
+  const isDef = a ? defaultAccount()?.id === a.id : !spendAccounts().length;
+  return `<form data-form="account" data-id="${a?.id || ''}" class="form" novalidate>
+    ${field(t('acc_name'), `<input name="name" value="${esc(a?.name || '')}" placeholder="${esc(t('acc_name_ph'))}" ${a ? '' : 'autofocus'} autocomplete="off" maxlength="40">`)}
+    <fieldset class="field pick-set"><legend>${t('acc_kind')}</legend><div class="seg" role="radiogroup">${['cash', 'bank', 'savings'].map(radio).join('')}</div></fieldset>
+    ${field(t('acc_balance'), amountInput('balance', a ? accountBalance(a) : '', false), `<p class="hint">${t('acc_balance_hint')}</p>`)}
+    <div data-role="defrow" ${kind === 'savings' ? 'hidden' : ''}>
+      <label class="check"><input type="checkbox" name="is_default" ${isDef ? 'checked' : ''}><span>${t('acc_default')}</span></label>
+      <p class="hint">${t('acc_default_hint')}</p></div>
+    <p class="hint" data-role="savhint" ${kind === 'savings' ? '' : 'hidden'}>${t('acc_savings_hint')}</p>
+    ${a ? `<button type="button" class="btn ghost small" data-act="acctx" data-id="${a.id}" style="margin-top:16px">${t('acc_see_tx')}</button>
+      <p class="hint">${t('acc_del_hint')}</p>` : ''}
+    ${formActions('account', a?.id)}</form>`;
+}
+
+export function updateAccFormBits(f) {
+  const saving = f.kind.value === 'savings';
+  f.querySelector('[data-role=defrow]').hidden = saving;
+  f.querySelector('[data-role=savhint]').hidden = !saving;
 }
 
 /* ---------- Bills ---------- */

@@ -102,3 +102,18 @@ describe('custom categories in quick entry', () => {
     expect(mem['not 309']).toBe('food');
   });
 });
+
+describe('card and account names in quick entry', () => {
+  beforeEach(() => {
+    state.data.cards = [{ id: 'c1', name: 'Bonus' }];
+    state.data.accounts = [{ id: 'a1', name: 'Nakit', kind: 'cash' }, { id: 'a2', name: 'İş Bankası', kind: 'bank' }];
+  });
+  it('takes the card or account out of the description', () => {
+    expect(parseOne('250 migros bonus')).toMatchObject({ card_id: 'c1', account_id: null, note: 'Migros' });
+    expect(parseOne('80 taksi nakit')).toMatchObject({ account_id: 'a1', card_id: null, note: 'Taksi' });
+    expect(parseOne('500 iş bankası kira')).toMatchObject({ account_id: 'a2', note: 'Kira' });
+  });
+  it('puts installments on the named card', () => {
+    expect(parseOne('12000 telefon 6 taksit bonus')).toMatchObject({ card_id: 'c1', count: 6, note: 'Telefon' });
+  });
+});

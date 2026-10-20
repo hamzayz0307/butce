@@ -3,7 +3,7 @@ import '@fontsource-variable/manrope';
 import '@fontsource-variable/bricolage-grotesque';
 import './styles.css';
 
-import { state, cardById, goalById, catById } from './state.js';
+import { state, cardById, goalById, catById, accountById } from './state.js';
 import { t } from './i18n.js';
 import { $, esc, addMonths } from './utils.js';
 import { curPeriod } from './period.js';
@@ -13,7 +13,8 @@ import { txListHtml } from './views/activity.js';
 import { openSheet, closeSheet, sheetForm } from './sheet.js';
 import {
   openAdd, renderQuickPreview, txForm, updateTxFormBits, billForm, instForm, updateInstFormBits,
-  cardForm, goalForm, goalMoneyForm, limitsForm, openSettings, catOptions, openCats, catForm
+  cardForm, goalForm, goalMoneyForm, limitsForm, openSettings, catOptions, openCats, catForm,
+  payOptions, formDraft, accountForm, updateAccFormBits, cardPayForm
 } from './forms.js';
 import {
   refresh, ensureCategories, FORMS, saveQuick, removeItem, payBill, unpayBill,
@@ -51,7 +52,18 @@ const ACTS = {
   sample: loadSample,
   paybill: el => payBill(el.dataset.id, el.dataset.month),
   unpay: el => unpayBill(el.dataset.id, el.dataset.month),
-  edittx: el => { const x = state.data.transactions.find(v => v.id === el.dataset.id); if (x) openSheet(t('edit_entry'), txForm(x)); },
+  edittx: el => {
+    const x = state.data.transactions.find(v => v.id === el.dataset.id);
+    if (!x) return;
+    openSheet(t(x.type === 'transfer' ? 'edit_transfer' : x.type === 'card_payment' ? 'card_pay_title' : 'edit_entry'), txForm(x));
+    updateTxFormBits(sheetForm());
+  },
+  transfer: () => { openAdd('detailed', { type: 'transfer' }); updateTxFormBits(sheetForm()); },
+  paycard: el => openSheet(t('card_pay_title'), cardPayForm(null, { card_id: el.dataset.id, stmt: el.dataset.stmt, amount: Number(el.dataset.amt) })),
+  newacc: () => openSheet(t('add_account'), accountForm(null)),
+  editacc: el => openSheet(t('edit_account'), accountForm(accountById(el.dataset.id))),
+  acctx: el => { closeSheet(); state.txFilter = { q: '', type: 'all', cat: null, acc: el.dataset.id }; goTo('tx'); },
+  clearacc: () => { state.txFilter.acc = null; render(); },
   newbill: () => openSheet(t('add_bill'), billForm(null)),
   editbill: el => openSheet(t('edit_bill'), billForm(state.data.bills.find(v => v.id === el.dataset.id))),
   newinst: () => { openSheet(t('add_inst'), instForm(null)); updateInstFormBits(sheetForm(), 'init'); },
@@ -71,7 +83,7 @@ const ACTS = {
   bar: el => { state.barSel = el.dataset.k; render(); },
   filtercat: el => { state.txFilter = { q: '', type: 'all', cat: el.dataset.id }; goTo('tx'); },
   clearcat: () => { state.txFilter.cat = null; render(); },
-  clearall: () => { state.txFilter = { q: '', type: 'all', cat: null }; render(); },
+  clearall: () => { state.txFilter = { q: '', type: 'all', cat: null, acc: null }; render(); },
   txtype: el => { state.txFilter.type = el.dataset.v; render(); },
   setlang: async el => { await setLanguage(el.dataset.v); openSettings(); },
   fetchrate: fetchRate,
@@ -106,6 +118,21 @@ document.addEventListener('input', e => {
   else if (el.form?.dataset.form === 'inst') updateInstFormBits(el.form, el.name);
 });
 
+// Switching Expense / Income / Transfer redraws a new entry's form, keeping what was typed
+function switchType(f, type) {
+  if (f.dataset.id) {           // editing: swap the lists that depend on the type
+    f.category_id.innerHTML = catOptions(type, null);
+    if (f.pay) f.pay.innerHTML = payOptions(type, type === 'income' && f.pay.value.startsWith('c:') ? '' : f.pay.value);
+    return updateTxFormBits(f);
+  }
+  const holder = document.createElement('div');
+  holder.innerHTML = txForm(null, formDraft(f, type));
+  const next = holder.firstElementChild;
+  f.replaceWith(next);
+  next.querySelector(`[name=type][value=${type}]`)?.focus();
+  updateTxFormBits(next);
+}
+
 document.addEventListener('change', e => {
   const el = e.target;
   if (el.dataset.qi != null) {
@@ -114,11 +141,11 @@ document.addEventListener('change', e => {
     return;
   }
   if (el.dataset.setting) { saveSetting(el.dataset.setting, el.value); return; }
-  const f = el.form;
-  if (f?.dataset.form === 'tx') {
-    if (el.name === 'type') f.category_id.innerHTML = catOptions(el.value, null);
-    updateTxFormBits(f);
-  } else if (f?.dataset.form === 'inst') updateInstFormBits(f, el.name);
+  const f = el.form, form = f?.dataset.form;
+  if ((form === 'tx' || form === 'transfer') && el.name === 'type') switchType(f, el.value);
+  else if (form === 'tx' || form === 'transfer') updateTxFormBits(f);
+  else if (form === 'inst') updateInstFormBits(f, el.name);
+  else if (form === 'account' && el.name === 'kind') updateAccFormBits(f);
 });
 
 $('#import-file').addEventListener('change', e => {

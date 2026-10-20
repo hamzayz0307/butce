@@ -6,9 +6,9 @@ import { renderTop, renderTabs } from './views/chrome.js';
 import { viewHome } from './views/home.js';
 import { viewTx } from './views/activity.js';
 import { viewPay } from './views/payments.js';
-import { viewGoals } from './views/goals.js';
+import { viewWallet } from './views/wallet.js';
 
-const VIEWS = { home: viewHome, tx: viewTx, pay: viewPay, goals: viewGoals };
+const VIEWS = { home: viewHome, tx: viewTx, pay: viewPay, wallet: viewWallet };
 
 export function render() {
   document.documentElement.lang = LANG;

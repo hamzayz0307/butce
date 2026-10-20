@@ -7,7 +7,7 @@ beforeEach(() => {
   state.data = {
     categories: DEFAULT_CATS.map((c, i) => ({ id: c.key, ...c, sort: i })),
     cards: [{ id: 'c1', name: 'Bonus', statement_day: 8, due_day: 18 }],
-    goals: [], bills: [],
+    goals: [], bills: [], accounts: [],
     installments: [{ id: 'p1', name: 'Telefon', total: 36000, count: 12, card_id: 'c1', category_id: 'shopping', first_month: '2026-06' }],
     transactions: [
       { id: 't1', type: 'expense', amount: 250, category_id: 'groceries', note: 'Migros', date: '2025-12-03' },

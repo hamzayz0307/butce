@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { state } from '../src/state.js';
 import {
-  portionFor, planRemaining, firstMonthFor, nextStatement, dueFor, statementAmount, monthStats, goalSaved
+  portionFor, planRemaining, firstMonthFor, nextStatement, dueFor, statementAmount, monthStats, goalSaved,
+  accountBalance, cardPaidTx
 } from '../src/model.js';
 
 const bonus = { id: 'c1', name: 'Bonus', statement_day: 8, due_day: 18 };
@@ -10,7 +11,7 @@ const world = { id: 'c2', name: 'World', statement_day: 22, due_day: 2 };
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date(2026, 9, 16, 12)); // 16 Oct 2026
-  state.data = { transactions: [], categories: [], bills: [], installments: [], cards: [bonus, world], goals: [] };
+  state.data = { transactions: [], categories: [], bills: [], installments: [], cards: [bonus, world], goals: [], accounts: [] };
   state.settings = { ...state.settings, expected_income: 10000 };
 });
 afterEach(() => vi.useRealTimers());
@@ -80,5 +81,39 @@ describe('month totals', () => {
       { type: 'saving', amount: -500, goal_id: 'g1', date: '2026-10-02' }
     ];
     expect(goalSaved({ id: 'g1', initial_saved: 1000 })).toBe(2500);
+  });
+});
+
+describe('accounts and transfers', () => {
+  const bank = { id: 'a1', kind: 'bank', opening_balance: 10000 };
+  const savings = { id: 'a2', kind: 'savings', opening_balance: 5000 };
+  beforeEach(() => { state.data.accounts = [bank, savings]; });
+
+  it('keeps balances from the opening balance and booked entries', () => {
+    state.data.transactions = [
+      { type: 'income', amount: 42000, account_id: 'a1', date: '2026-10-01' },
+      { type: 'expense', amount: 1200, account_id: 'a1', date: '2026-10-02' },
+      { type: 'expense', amount: 300, card_id: 'c1', date: '2026-10-03' },          // card, not the bank
+      { type: 'transfer', amount: 3000, to_amount: 3000, account_id: 'a1', to_account_id: 'a2', date: '2026-10-03' },
+      { type: 'card_payment', amount: 8000, card_id: 'c1', stmt: '2026-10-08', account_id: 'a1', date: '2026-10-17' }
+    ];
+    expect(accountBalance(bank)).toBe(10000 + 42000 - 1200 - 3000 - 8000);
+    expect(accountBalance(savings)).toBe(8000);
+  });
+
+  it('counts transfers into savings as saved, and card payments as nothing', () => {
+    state.data.transactions = [
+      { type: 'expense', amount: 1000, category_id: 'food', date: '2026-10-03' },
+      { type: 'transfer', amount: 3000, account_id: 'a1', to_account_id: 'a2', date: '2026-10-03' },
+      { type: 'transfer', amount: 500, account_id: 'a2', to_account_id: 'a1', date: '2026-10-05' },
+      { type: 'card_payment', amount: 8000, card_id: 'c1', stmt: '2026-10-08', account_id: 'a1', date: '2026-10-17' }
+    ];
+    expect(monthStats('2026-10')).toMatchObject({ spent: 1000, saved: 2500, remaining: 6500 });
+  });
+
+  it('knows when a statement is paid', () => {
+    state.data.transactions = [{ type: 'card_payment', amount: 100, card_id: 'c1', stmt: '2026-10-08', date: '2026-10-17' }];
+    expect(cardPaidTx(bonus, '2026-10-08')).toBeTruthy();
+    expect(cardPaidTx(bonus, '2026-11-08')).toBeUndefined();
   });
 });

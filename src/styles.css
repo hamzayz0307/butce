@@ -82,6 +82,9 @@ button{cursor:pointer}
 .row-amt small{display:block;font:500 12px var(--ui);color:var(--muted)}
 .amt-in{color:var(--pos)}
 .amt-save{color:var(--muted)}
+.amt-neg{color:var(--neg)}
+.sec-sub{margin:-2px 2px 10px;font-size:14px;color:var(--muted)}
+.sec-sub b{font-family:var(--display);color:var(--ink)}
 .ico{flex:none;width:40px;height:40px;border-radius:13px;display:grid;place-items:center;font-size:19px;background:color-mix(in srgb,var(--c,#7C8A85) 17%,transparent)}
 .day-head{display:flex;justify-content:space-between;font-size:13px;font-weight:700;color:var(--muted);padding:16px 2px 6px}
 .empty-line{margin:0;padding:16px 2px;color:var(--muted)}

@@ -1,12 +1,15 @@
 // Everything that changes data: form saves, deletes, bill payments, backup, rates.
-import { state, DEFAULT_SETTINGS, catById, catName, catsOf, goalById, defaultCard, fallbackCat } from './state.js';
+import {
+  state, DEFAULT_SETTINGS, catById, catName, catsOf, goalById, defaultCard, fallbackCat,
+  accountById, defaultAccount, cardById
+} from './state.js';
 import { store, TABLES } from './store.js';
 import { t, setLang, LANG } from './i18n.js';
 import { today, curMonth, r2, toNumber, norm } from './utils.js';
 import { curPeriod } from './period.js';
 import { numIn } from './format.js';
 import { DEFAULT_CATS } from './constants.js';
-import { billDue, billPaidTx, firstMonthFor } from './model.js';
+import { billDue, billPaidTx, firstMonthFor, accountBalance } from './model.js';
 import { formErr, openCats } from './forms.js';
 import { closeSheet, toast } from './sheet.js';
 import { rememberCats } from './parser.js';
@@ -43,17 +46,60 @@ export const FORMS = {
     const id = f.dataset.id, type = f.type.value, amount = toNumber(f.amount.value);
     if (!(amount > 0)) return formErr(f, t('err_amount'));
     const row = { type, amount, category_id: f.category_id.value, note: f.note.value.trim(), date: f.date.value || today() };
+    if (f.pay) {
+      const [kind, pid] = (f.pay.value || ':').split(':');
+      row.card_id = type === 'expense' && kind === 'c' ? pid : null;
+      row.account_id = kind === 'a' ? pid : null;
+    }
     if (id) { await store.update('transactions', id, row); return done(t('saved')); }
-    const cardId = f.card_id ? (f.card_id.value || null) : null;
     const count = f.count && !f.count.disabled ? Number(f.count.value) : 1;
-    if (type === 'expense' && cardId && count > 1) {
+    if (type === 'expense' && row.card_id && count > 1) {
       await store.insert('installments', {
-        name: row.note || catName(catById(row.category_id)), total: amount, count, card_id: cardId,
-        category_id: row.category_id, purchase_date: row.date, first_month: firstMonthFor(cardId, row.date)
+        name: row.note || catName(catById(row.category_id)), total: amount, count, card_id: row.card_id,
+        category_id: row.category_id, purchase_date: row.date, first_month: firstMonthFor(row.card_id, row.date)
       });
     } else {
-      await store.insert('transactions', { ...row, card_id: type === 'expense' ? cardId : null });
+      await store.insert('transactions', row);
     }
+    done(t('saved'));
+  },
+
+  async transfer(f) {
+    const amount = toNumber(f.amount.value), from = f.from.value, to = f.to.value;
+    if (!(amount > 0)) return formErr(f, t('err_amount'));
+    if (from === to) return formErr(f, t('err_same_acc'));
+    const row = { type: 'transfer', amount, to_amount: amount, account_id: from, to_account_id: to, category_id: null, note: f.note.value.trim(), date: f.date.value || today() };
+    if (f.dataset.id) await store.update('transactions', f.dataset.id, row);
+    else await store.insert('transactions', row);
+    done(t('saved'));
+  },
+
+  async cardpay(f) {
+    const amount = toNumber(f.amount.value);
+    if (!(amount > 0)) return formErr(f, t('err_amount'));
+    const card = cardById(f.dataset.card);
+    const [kind, pid] = (f.pay?.value || ':').split(':');
+    const row = { type: 'card_payment', amount, card_id: f.dataset.card, stmt: f.dataset.stmt, account_id: kind === 'a' ? pid : null, category_id: null, note: card?.name || '', date: f.date.value || today() };
+    if (f.dataset.id) await store.update('transactions', f.dataset.id, row);
+    else await store.insert('transactions', row);
+    done(t('saved'));
+  },
+
+  async account(f) {
+    const name = f.name.value.trim().replace(/\s+/g, ' ');
+    if (!name) return formErr(f, t('err_name'));
+    const typed = f.balance.value.trim() ? toNumber(f.balance.value) : 0;
+    if (Number.isNaN(typed)) return formErr(f, t('err_amount'));
+    const kind = f.kind.value, a = f.dataset.id ? accountById(f.dataset.id) : null;
+    // We store the opening balance; the typed figure is today's balance, so take back what's already booked.
+    const booked = a ? r2(accountBalance(a) - (Number(a.opening_balance) || 0)) : 0;
+    const row = { name, kind, currency: a?.currency || state.settings.currency || 'TRY', opening_balance: r2(typed - booked) };
+    let id = a?.id;
+    if (a) await store.update('accounts', a.id, row);
+    else id = (await store.insert('accounts', { ...row, sort: Math.max(0, ...state.data.accounts.map(x => x.sort ?? 0)) + 1 })).id;
+    const wantDefault = kind !== 'savings' && f.is_default?.checked;
+    if (wantDefault) await store.saveSettings({ default_account_id: id });
+    else if (state.settings.default_account_id === id) await store.saveSettings({ default_account_id: null });
     done(t('saved'));
   },
 
@@ -157,15 +203,20 @@ export const FORMS = {
 export async function saveQuick() {
   const items = state.quickItems.filter(x => !x.error);
   if (!items.length) return;
-  const card = defaultCard();
+  const card = defaultCard(), acc = defaultAccount();
   for (const x of items) {
     if (x.count > 1) {
+      const cardId = x.card_id || card?.id || null;
       await store.insert('installments', {
-        name: x.note || catName(catById(x.category_id)), total: x.amount, count: x.count, card_id: card?.id || null,
-        category_id: x.category_id, purchase_date: x.date, first_month: firstMonthFor(card?.id, x.date)
+        name: x.note || catName(catById(x.category_id)), total: x.amount, count: x.count, card_id: cardId,
+        category_id: x.category_id, purchase_date: x.date, first_month: firstMonthFor(cardId, x.date)
       });
     } else {
-      await store.insert('transactions', { type: x.type, amount: x.amount, category_id: x.category_id, note: x.note, date: x.date, card_id: null });
+      const cardId = x.type === 'expense' ? x.card_id || null : null;
+      await store.insert('transactions', {
+        type: x.type, amount: x.amount, category_id: x.category_id, note: x.note, date: x.date,
+        card_id: cardId, account_id: cardId ? null : (x.account_id || acc?.id || null)
+      });
     }
   }
   const corrected = items.filter(x => x.overridden);
@@ -175,6 +226,15 @@ export async function saveQuick() {
 
 /* ---------- Deletes ---------- */
 export async function removeItem(kind, id) {
+  if (kind === 'account') {
+    for (const x of state.data.transactions) {
+      if (x.type === 'transfer' && (x.account_id === id || x.to_account_id === id)) await store.remove('transactions', x.id);
+      else if (x.account_id === id) await store.update('transactions', x.id, { account_id: null });
+    }
+    await store.remove('accounts', id);
+    if (state.settings.default_account_id === id) await store.saveSettings({ default_account_id: null });
+    return done(t('deleted'));
+  }
   if (kind === 'cat') {
     const c = catById(id), fb = fallbackCat(c.type);
     for (const tb of ['transactions', 'bills', 'installments']) {
@@ -206,7 +266,8 @@ export async function payBill(id, key) {
   if (!b || billPaidTx(b, key)) return;
   await store.insert('transactions', {
     type: 'expense', amount: b.amount, category_id: b.category_id, note: b.name,
-    date: key === curPeriod() ? today() : billDue(b, key), bill_id: b.id, bill_month: key, bill_due: billDue(b, key), card_id: null
+    date: key === curPeriod() ? today() : billDue(b, key), bill_id: b.id, bill_month: key, bill_due: billDue(b, key),
+    card_id: null, account_id: defaultAccount()?.id || null
   });
   await refresh(); render();
 }

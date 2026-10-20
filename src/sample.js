@@ -2,9 +2,10 @@
 import { state, catByKey } from './state.js';
 import { store } from './store.js';
 import { t } from './i18n.js';
-import { pad, curMonth, addMonths, daysInMonth } from './utils.js';
+import { pad, today, shiftDays, curMonth, addMonths, daysInMonth } from './utils.js';
 import { curPeriod } from './period.js';
 import { refresh, done, ensureCategories } from './actions.js';
+import { accountBalance, statementAmount, stmtDateIn, dueFor } from './model.js';
 
 const BILLS = [
   ['Kira', 15000, 3, 'rent'], ['Spor salonu', 1200, 1, 'health'], ['Netflix', 230, 11, 'subscriptions'],
@@ -36,22 +37,30 @@ export async function loadSample() {
 
   const bonus = await store.insert('cards', { name: 'Bonus', statement_day: 8, due_day: 18, limit: 60000 });
   const world = await store.insert('cards', { name: 'World', statement_day: 22, due_day: 2, limit: 40000 });
+  const cash = await store.insert('accounts', { name: 'Nakit', kind: 'cash', currency: 'TRY', opening_balance: 0, sort: 1 });
+  const bank = await store.insert('accounts', { name: 'Garanti', kind: 'bank', currency: 'TRY', opening_balance: 0, sort: 2 });
+  const vadeli = await store.insert('accounts', { name: 'Vadeli', kind: 'savings', currency: 'TRY', opening_balance: 0, sort: 3 });
+  await store.saveSettings({ default_account_id: bank.id });
 
   const bills = [];
   for (const [name, amount, d, key] of BILLS) bills.push(await store.insert('bills', { name, amount, day: d, category_id: K(key), start_month: k2 }));
 
   for (const key of [k1, k0]) {
     const isCur = key === k0;
-    await store.insert('transactions', { type: 'income', amount: 42000, category_id: K('salary'), note: 'Maaş', date: day(key, 1), card_id: null });
+    await store.insert('transactions', { type: 'income', amount: 42000, category_id: K('salary'), note: 'Maaş', date: day(key, 1), card_id: null, account_id: bank.id });
+    if (!isCur || dToday >= 3) {
+      await store.insert('transactions', { type: 'transfer', amount: 3000, to_amount: 3000, account_id: bank.id, to_account_id: vadeli.id, category_id: null, note: '', date: day(key, 3) });
+    }
     for (const [d, ck, note, amt] of MONTH) {
       if ((isCur && d > dToday) || d > daysInMonth(key)) continue;
       const amount = isCur ? amt : Math.round(amt * (PREV_FACTOR[ck] || 1) / 5) * 5;
       const card = ['shopping', 'fun'].includes(ck) ? bonus.id : (ck === 'groceries' && d % 2 ? world.id : null);
-      await store.insert('transactions', { type: 'expense', amount, category_id: K(ck), note, date: day(key, d), card_id: card });
+      const account = card ? null : amount < 400 ? cash.id : bank.id;
+      await store.insert('transactions', { type: 'expense', amount, category_id: K(ck), note, date: day(key, d), card_id: card, account_id: account });
     }
     for (const b of bills) {
       if (isCur && b.day >= dToday) continue;
-      await store.insert('transactions', { type: 'expense', amount: b.amount, category_id: b.category_id, note: b.name, date: day(key, b.day), bill_id: b.id, bill_month: key, bill_due: day(key, b.day), card_id: null });
+      await store.insert('transactions', { type: 'expense', amount: b.amount, category_id: b.category_id, note: b.name, date: day(key, b.day), bill_id: b.id, bill_month: key, bill_due: day(key, b.day), card_id: null, account_id: bank.id });
     }
   }
 
@@ -65,6 +74,24 @@ export async function loadSample() {
   await store.insert('transactions', { type: 'saving', amount: 2000, goal_id: laptop.id, note: laptop.name, category_id: null, date: day(k1, 2) });
   await store.insert('transactions', { type: 'saving', amount: 1000, goal_id: trip.id, note: trip.name, category_id: null, date: day(k1, 2) });
   await store.insert('transactions', { type: 'saving', amount: 2000, goal_id: laptop.id, note: laptop.name, category_id: null, date: day(k0, Math.min(2, dToday)) });
+
+  // Card statements that were already due are paid from the bank
+  await refresh();
+  const now0 = today();
+  for (const card of [bonus, world]) {
+    for (const key of [k1, k0]) {
+      const stmt = stmtDateIn(card, key), due = dueFor(card, stmt);
+      if (due >= now0) continue;
+      const amount = statementAmount(card, stmt);
+      if (amount > 0) await store.insert('transactions', { type: 'card_payment', amount, card_id: card.id, stmt, account_id: bank.id, category_id: null, note: card.name, date: shiftDays(due, -1) });
+    }
+  }
+  // Pick opening balances so today's balances look lived-in
+  await refresh();
+  for (const [acc, target] of [[cash, 1850], [bank, 24320], [vadeli, 58000]]) {
+    const a = state.data.accounts.find(x => x.id === acc.id);
+    await store.update('accounts', acc.id, { opening_balance: target - accountBalance(a) });
+  }
 
   await refresh();
   for (const [key, lim] of [['groceries', 6000], ['food', 3000], ['fun', 2000], ['shopping', 6000]]) {
