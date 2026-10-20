@@ -22,6 +22,7 @@ import {
   saveSetting, setLanguage, fetchRates, exportData, importFile, wipeAll, recordNetWorth
 } from './actions.js';
 import { loadSample } from './sample.js';
+import { downloadCsv } from './export.js';
 
 const goTo = (tab, payTab) => {
   state.tab = tab;
@@ -75,6 +76,9 @@ const ACTS = {
   debtpay: el => { const d = state.data.debts.find(v => v.id === el.dataset.id); if (d) openSheet(debtPayTitle(d), debtPayForm(d, null)); },
   'goto-loans': () => goTo('pay', 'loans'),
   'goto-wallet': () => goTo('wallet'),
+  repyear: el => { state.repYear = (state.repYear || Number(curPeriod().slice(0, 4))) + Number(el.dataset.d); state.repSel = null; render(); },
+  repsel: el => { state.repSel = el.dataset.k; render(); },
+  csv: el => downloadCsv(el.dataset.year ? Number(el.dataset.year) : null),
   editacc: el => openSheet(t('edit_account'), accountForm(accountById(el.dataset.id))),
   acctx: el => { closeSheet(); state.txFilter = { q: '', type: 'all', cat: null, acc: el.dataset.id }; goTo('tx'); },
   clearacc: () => { state.txFilter.acc = null; render(); },

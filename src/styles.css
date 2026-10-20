@@ -168,6 +168,29 @@ button{cursor:pointer}
 .qp .row{min-height:54px}
 .qp select{max-width:150px;height:34px;border-radius:10px;border:1px solid var(--line);background:var(--paper);font-size:13.5px;padding:0 8px}
 .set-group{margin-top:22px}
+.year-nav{display:flex;align-items:center;gap:4px;margin:0 0 4px}
+.year-nav b{font:600 18px var(--display);min-width:52px;text-align:center}
+.year-nav .icon-btn:disabled{opacity:.3;cursor:default}
+.rlegend{display:flex;gap:16px;font-size:12.5px;color:var(--muted);margin-bottom:10px}
+.rlegend span{display:inline-flex;align-items:center;gap:6px}
+.sw-col{display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--data)}
+.sw-tick2{display:inline-block;width:14px;height:2px;border-radius:1px;background:var(--ink)}
+.rplot{position:relative;height:150px;margin-left:34px}
+.rgrid{position:absolute;left:0;right:0;border-top:1px solid var(--line)}
+.rgrid span{position:absolute;right:100%;margin-right:6px;transform:translateY(-50%);font-size:11px;color:var(--muted);white-space:nowrap}
+.rcols{display:grid;grid-template-columns:repeat(12,1fr);gap:4px;height:100%;position:relative}
+.rcol{position:relative;height:100%;display:flex;align-items:flex-end;justify-content:center;background:none;border:0;padding:0;min-width:0}
+.rcol i{display:block;width:100%;max-width:16px;min-height:2px;border-radius:4px 4px 0 0;background:var(--data);opacity:.5}
+.rcol[aria-pressed="true"] i{opacity:1}
+.rcol s{position:absolute;left:12%;right:12%;height:2px;margin-bottom:-1px;border-radius:1px;background:var(--ink);box-shadow:0 0 0 2px var(--surface)}
+.rcols.rx{height:auto;margin:6px 0 0 34px;font-size:11px;color:var(--muted);text-align:center}
+.rline{display:block;width:100%;height:auto}
+.rline-x{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:4px}
+.rtable summary{cursor:pointer;color:var(--accent);font-weight:700;font-size:13.5px;margin-top:12px}
+.rtable table{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
+.rtable th,.rtable td{text-align:right;padding:6px 4px;border-top:1px solid var(--line)}
+.rtable th:first-child,.rtable td:first-child{text-align:left}
+.rtable th{color:var(--muted);font-weight:700}
 .calc{margin-top:14px;border:1px solid var(--line);border-radius:14px;padding:2px 14px 14px}
 .calc summary{cursor:pointer;font-weight:700;color:var(--accent);padding:10px 0 4px}
 .set-group h4{margin:0 0 4px;font:600 15px var(--display)}

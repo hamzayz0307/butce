@@ -8,6 +8,11 @@ import { svg, IC } from './components.js';
 export function renderTop() {
   const el = $('#top');
   const settingsBtn = `<button class="icon-btn" data-act="settings" aria-label="${t('settings')}">${svg(IC.sliders)}</button>`;
+  if (state.tab === 'reports') {
+    el.innerHTML = `<button class="icon-btn" data-act="tab" data-v="home" aria-label="${t('back')}">${svg(IC.left)}</button>
+      <h1>${t('reports')}</h1><span class="spacer"></span>${settingsBtn}`;
+    return;
+  }
   if (state.tab === 'wallet') {
     el.innerHTML = `<h1>${t('tab_wallet')}</h1><span class="spacer"></span>${settingsBtn}`;
     return;
@@ -19,7 +24,8 @@ export function renderTop() {
     <h1><button class="month-btn" data-act="month-now">${periodTitle(state.month)}${range ? `<span class="month-range">${range}</span>` : ''}</button></h1>
     <button class="icon-btn" data-act="month" data-d="1" aria-label="${t('next_month')}">${svg(IC.right)}</button>
     ${notNow ? `<button class="today-link" data-act="month-now">${t('this_month')}</button>` : ''}
-    <span class="spacer"></span>${settingsBtn}`;
+    <span class="spacer"></span>
+    ${state.tab === 'home' ? `<button class="icon-btn" data-act="tab" data-v="reports" aria-label="${t('reports')}">${svg(IC.chart)}</button>` : ''}${settingsBtn}`;
 }
 
 export function renderTabs() {

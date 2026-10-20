@@ -7,8 +7,9 @@ import { viewHome } from './views/home.js';
 import { viewTx } from './views/activity.js';
 import { viewPay } from './views/payments.js';
 import { viewWallet } from './views/wallet.js';
+import { viewReports } from './views/reports.js';
 
-const VIEWS = { home: viewHome, tx: viewTx, pay: viewPay, wallet: viewWallet };
+const VIEWS = { home: viewHome, tx: viewTx, pay: viewPay, wallet: viewWallet, reports: viewReports };
 
 export function render() {
   document.documentElement.lang = LANG;

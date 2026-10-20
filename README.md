@@ -18,6 +18,8 @@ A personal budgeting app for Turkey: daily safe-to-spend, bills and subscription
 - **Bank loans**: monthly payment set aside and marked as paid, what's left to pay, a payment calculator that adds KKDF and BSMV for personal and vehicle loans.
 - **Money owed (alacak/borç)**: who owes whom, partial repayments, due dates; optionally moves money in the budget and accounts.
 - **Savings goals**: how much to put aside each month, with a USD equivalent.
+- **Reports**: income vs spending by month, spending by category, where most money went, net worth over time.
+- **Excel export**: CSV for a year or everything (`;` and decimal comma in Turkish, so Excel opens it directly).
 - **Backup**: export and restore all data as JSON.
 
 ## Run locally
@@ -48,7 +50,10 @@ src/
   actions.js          saving, deleting, backup
   forms.js, sheet.js  bottom sheets and forms
   sample.js           sample data
-  views/              Overview, Activity, Payments, Wallet
+  export.js           CSV export
+  money.js            exchange rates, gold units
+  period.js           payday-based budget months
+  views/              Overview, Activity, Payments, Wallet, Reports
   styles.css
 tests/                Vitest unit tests
 ```
