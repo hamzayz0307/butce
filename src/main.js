@@ -18,7 +18,7 @@ import {
 } from './forms.js';
 import {
   refresh, ensureCategories, FORMS, saveQuick, removeItem, payBill, unpayBill,
-  saveSetting, setLanguage, fetchRate, exportData, importFile, wipeAll
+  saveSetting, setLanguage, fetchRates, exportData, importFile, wipeAll, recordNetWorth
 } from './actions.js';
 import { loadSample } from './sample.js';
 
@@ -86,7 +86,7 @@ const ACTS = {
   clearall: () => { state.txFilter = { q: '', type: 'all', cat: null, acc: null }; render(); },
   txtype: el => { state.txFilter.type = el.dataset.v; render(); },
   setlang: async el => { await setLanguage(el.dataset.v); openSettings(); },
-  fetchrate: fetchRate,
+  fetchrate: () => fetchRates(),
   export: exportData,
   import: () => $('#import-file').click(),
   wipe: el => { if (arm(el)) wipeAll(); },
@@ -114,7 +114,10 @@ document.addEventListener('input', e => {
   } else if (el.id === 'txq') {
     state.txFilter.q = el.value;
     $('#tx-list').innerHTML = txListHtml();
-  } else if (el.form?.dataset.form === 'tx') updateTxFormBits(el.form);
+  } else if (el.form?.dataset.form === 'tx' || el.form?.dataset.form === 'transfer') {
+    if (el.name === 'to_amount') el.dataset.typed = '1';
+    updateTxFormBits(el.form);
+  }
   else if (el.form?.dataset.form === 'inst') updateInstFormBits(el.form, el.name);
 });
 
@@ -163,5 +166,6 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
   await refresh();
   await ensureCategories();
   state.month = curPeriod();
+  recordNetWorth();
   render();
 })();

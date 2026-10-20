@@ -41,7 +41,7 @@ export const cardById = id => state.data.cards.find(c => c.id === id);
 export const goalById = id => state.data.goals.find(g => g.id === id);
 export const accountById = id => state.data.accounts.find(a => a.id === id);
 export const accountsList = () => [...state.data.accounts].sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
-export const ACC_EMOJI = { cash: '💵', bank: '🏦', savings: '🐖' };
+export const ACC_EMOJI = { cash: '💵', bank: '🏦', savings: '🐖', fx: '💱', gold: '🪙' };
 export const accEmoji = a => ACC_EMOJI[a?.kind] || '🏦';
 // Money set aside: transfers into these count as savings in the budget
 export const isSavingAcc = a => !!a && a.kind !== 'cash' && a.kind !== 'bank';

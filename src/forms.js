@@ -8,6 +8,7 @@ import { $, esc, today, addMonths, toNumber } from './utils.js';
 import { fmt, monthName, numIn, dateShort } from './format.js';
 import { firstMonthFor, dueFor, accountBalance } from './model.js';
 import { startDay, MAX_START_DAY } from './period.js';
+import { FX, GOLD_UNITS, rates, rateTRY, isBaseCurrency, ratesUpdatedText } from './money.js';
 import { GOAL_EMOJIS, CAT_EMOJIS, CAT_COLORS, FALLBACK_KEYS } from './constants.js';
 import { ico, opt, field, amountInput } from './views/components.js';
 import { openSheet } from './sheet.js';
@@ -131,9 +132,10 @@ function transferForm(x, draft) {
   const to = x?.to_account_id || (draft.to && draft.to !== from ? draft.to : '') || accs.find(a => a.id !== from && isSavingAcc(a))?.id || accs.find(a => a.id !== from).id;
   return `<form data-form="transfer" data-id="${x?.id || ''}" class="form" novalidate>
     ${isNew ? typeSeg('transfer', true) : ''}
-    ${field(t('amount'), amountInput('amount', x?.amount ?? draft.amount))}
+    ${field(`<span data-role="amtlabel">${t('amount')}</span>`, amountInput('amount', x?.amount ?? draft.amount))}
     <div class="grid2">${field(t('from_acc'), `<select name="from">${accOptions(from)}</select>`)}
       ${field(t('to_acc'), `<select name="to">${accOptions(to)}</select>`)}</div>
+    <div data-role="torow" hidden>${field(`<span data-role="tolabel"></span>`, `<input class="amount" name="to_amount" inputmode="decimal" autocomplete="off" value="${esc(x && x.to_amount != null ? numIn(x.to_amount) : '')}" ${x?.to_amount != null ? 'data-typed="1"' : ''} placeholder="0">`, `<p class="hint" data-role="ratehint"></p>`)}</div>
     <p class="hint" data-role="saveprev"></p>
     ${field(t('note'), `<input name="note" value="${esc(x?.note ?? draft.note ?? '')}" placeholder="${esc(t('transfer_note_ph'))}" autocomplete="off">`)}
     ${field(t('date'), dateInput(x?.date || draft.date))}
@@ -158,8 +160,10 @@ export function updateTxFormBits(f) {
   if (f.dataset.form === 'transfer') {
     const out = f.querySelector('[data-role=saveprev]');
     if (!out || !f.from) return;
-    const fromS = isSavingAcc(accountById(f.from.value)), toS = isSavingAcc(accountById(f.to.value));
+    const from = accountById(f.from.value), to = accountById(f.to.value);
+    const fromS = isSavingAcc(from), toS = isSavingAcc(to);
     out.textContent = f.from.value === f.to.value ? t('err_same_acc') : !fromS && toS ? t('transfer_in_hint') : fromS && !toS ? t('transfer_out_hint') : '';
+    updateTransferAmounts(f, from, to);
     return;
   }
   const countSel = f.count;
@@ -172,28 +176,58 @@ export function updateTxFormBits(f) {
     ? t('inst_preview', { amt: fmt(amt / n), month: monthName(firstMonthFor(sel.slice(2), f.date.value || today())) }) : '';
 }
 
+// When the two accounts hold different currencies (or gold), ask for both amounts
+// and suggest the received amount from the saved rates until the user types their own.
+function updateTransferAmounts(f, from, to) {
+  const curOf = a => a?.currency || state.settings.currency || 'TRY';
+  const SYM = { TRY: '₺', USD: '$', EUR: '€', GBP: '£' };
+  const unitName = a => (a?.currency === 'XAU' ? t('unit_' + (a.unit || 'g24')) : SYM[curOf(a)] || curOf(a));
+  const differ = !!from && !!to && (curOf(from) !== curOf(to) || (curOf(to) === 'XAU' && from.unit !== to.unit));
+  f.querySelector('[data-role=torow]').hidden = !differ;
+  f.querySelector('[data-role=amtlabel]').textContent = differ ? t('amount_sent', { unit: unitName(from) }) : t('amount');
+  if (!differ) return;
+  f.querySelector('[data-role=tolabel]').textContent = t('amount_received', { unit: unitName(to) });
+  const grams = a => (a.currency === 'XAU' ? (GOLD_UNITS[a.unit] || 1) : 1);
+  const rf = rateTRY(curOf(from)), rt = rateTRY(curOf(to));
+  const hint = f.querySelector('[data-role=ratehint]');
+  if (!rf || !rt) { hint.textContent = t('rate_missing'); return; }
+  hint.textContent = '';
+  if (f.to_amount.dataset.typed) return;
+  const amt = toNumber(f.amount.value);
+  f.to_amount.value = amt > 0 ? numIn(Math.round(amt * rf * grams(from) / (rt * grams(to)) * 100) / 100) : '';
+}
+
 /* ---------- Accounts ---------- */
 export function accountForm(a) {
   const kind = a?.kind || (spendAccounts().length ? 'bank' : 'cash');
   const radio = k => `<label><input class="sr" type="radio" name="kind" value="${k}" ${kind === k ? 'checked' : ''}><span>${t('kind_' + k)}</span></label>`;
   const isDef = a ? defaultAccount()?.id === a.id : !spendAccounts().length;
+  // Kind can't change once foreign currency or gold has amounts in it (and vice versa)
+  const locked = a && state.data.transactions.some(x => x.account_id === a.id || x.to_account_id === a.id);
+  const kinds = !locked ? ['cash', 'bank', 'savings', 'fx', 'gold'] : a.kind === 'fx' || a.kind === 'gold' ? [a.kind] : ['cash', 'bank', 'savings'];
+  const cur = a?.currency && a.currency !== 'XAU' && !isBaseCurrency(a) ? a.currency : 'USD';
   return `<form data-form="account" data-id="${a?.id || ''}" class="form" novalidate>
     ${field(t('acc_name'), `<input name="name" value="${esc(a?.name || '')}" placeholder="${esc(t('acc_name_ph'))}" ${a ? '' : 'autofocus'} autocomplete="off" maxlength="40">`)}
-    <fieldset class="field pick-set"><legend>${t('acc_kind')}</legend><div class="seg" role="radiogroup">${['cash', 'bank', 'savings'].map(radio).join('')}</div></fieldset>
-    ${field(t('acc_balance'), amountInput('balance', a ? accountBalance(a) : '', false), `<p class="hint">${t('acc_balance_hint')}</p>`)}
-    <div data-role="defrow" ${kind === 'savings' ? 'hidden' : ''}>
+    <fieldset class="field pick-set"><legend>${t('acc_kind')}</legend><div class="seg seg-wrap" role="radiogroup">${kinds.map(radio).join('')}</div></fieldset>
+    <div data-role="fxrow" ${kind === 'fx' ? '' : 'hidden'}>${field(t('acc_currency'), `<select name="currency" ${locked ? 'disabled' : ''}>${FX.map(c => opt(c, c, c === cur)).join('')}</select>`)}</div>
+    <div data-role="goldrow" ${kind === 'gold' ? '' : 'hidden'}>${field(t('gold_unit'), `<select name="unit" ${locked ? 'disabled' : ''}>${Object.keys(GOLD_UNITS).map(u => opt(u, t('unit_' + u), (a?.unit || 'g24') === u)).join('')}</select>`, `<p class="hint">${t('gold_hint')}</p>`)}</div>
+    ${field(`<span data-role="ballabel">${t(kind === 'fx' || kind === 'gold' ? 'acc_amount' : 'acc_balance')}</span>`, amountInput('balance', a ? accountBalance(a) : '', false), `<p class="hint">${t('acc_balance_hint')}</p>`)}
+    <div data-role="defrow" ${kind === 'cash' || kind === 'bank' ? '' : 'hidden'}>
       <label class="check"><input type="checkbox" name="is_default" ${isDef ? 'checked' : ''}><span>${t('acc_default')}</span></label>
       <p class="hint">${t('acc_default_hint')}</p></div>
-    <p class="hint" data-role="savhint" ${kind === 'savings' ? '' : 'hidden'}>${t('acc_savings_hint')}</p>
+    <p class="hint" data-role="savhint" ${kind === 'cash' || kind === 'bank' ? 'hidden' : ''}>${t('acc_savings_hint')}</p>
     ${a ? `<button type="button" class="btn ghost small" data-act="acctx" data-id="${a.id}" style="margin-top:16px">${t('acc_see_tx')}</button>
       <p class="hint">${t('acc_del_hint')}</p>` : ''}
     ${formActions('account', a?.id)}</form>`;
 }
 
 export function updateAccFormBits(f) {
-  const saving = f.kind.value === 'savings';
-  f.querySelector('[data-role=defrow]').hidden = saving;
-  f.querySelector('[data-role=savhint]').hidden = !saving;
+  const kind = f.kind.value, spend = kind === 'cash' || kind === 'bank';
+  f.querySelector('[data-role=defrow]').hidden = !spend;
+  f.querySelector('[data-role=savhint]').hidden = spend;
+  f.querySelector('[data-role=fxrow]').hidden = kind !== 'fx';
+  f.querySelector('[data-role=goldrow]').hidden = kind !== 'gold';
+  f.querySelector('[data-role=ballabel]').textContent = t(kind === 'fx' || kind === 'gold' ? 'acc_amount' : 'acc_balance');
 }
 
 /* ---------- Bills ---------- */
@@ -328,9 +362,11 @@ export function openSettings() {
     ${field(t('s_currency'), `<select data-setting="currency">${['TRY', 'USD', 'EUR'].map(c => opt(c, c, (s.currency || 'TRY') === c)).join('')}</select>`)}
     ${field(t('s_period'), `<select data-setting="period_start_day">${Array.from({ length: MAX_START_DAY }, (_, i) => opt(i + 1, i === 0 ? t('s_period_cal') : String(i + 1), startDay() === i + 1)).join('')}</select>`, `<p class="hint">${t('s_period_hint')}</p>`)}
     ${field(t('s_income'), `<input data-setting="expected_income" inputmode="decimal" value="${esc(numIn(s.expected_income))}" placeholder="0" autocomplete="off">`, `<p class="hint">${t('s_income_hint')}</p>`)}
-    ${field(t('s_rate'), `<input data-setting="usd_rate" inputmode="decimal" value="${esc(numIn(s.usd_rate))}" placeholder="—" autocomplete="off">`, `<p class="hint">${t('s_rate_hint')}</p>`)}
-    <button class="btn ghost small" data-act="fetchrate" style="margin-top:8px">${t('s_fetch')}</button>
-    <div class="set-group"><h4>${t('s_cats')}</h4><div class="grid2" style="gap:8px">
+    <div class="set-group"><h4>${t('s_rates')}</h4>
+      <div class="grid2">${['USD', 'EUR', 'GBP', 'XAU'].map(c => field(t('rate_label_' + c), `<input data-setting="rate_${c}" inputmode="decimal" value="${esc(numIn(rates()[c]))}" placeholder="—" autocomplete="off">`)).join('')}</div>
+      <p class="hint">${t('s_rates_hint')} <span data-role="rates-when">${ratesUpdatedText()}</span></p>
+      <button class="btn ghost small" data-act="fetchrate" style="margin-top:8px">${t('s_fetch')}</button></div>
+    <div class="set-group"><h4>${t('s_cats')}</h4><div style="display:grid;gap:8px">
       <button class="btn ghost" data-act="cats">${t('manage_cats')}</button>
       <button class="btn ghost" data-act="limits">${t('edit_limits')}</button></div></div>
     <div class="set-group"><h4>${t('s_data')}</h4><p class="hint" style="margin:0 0 10px">${t('s_storage')}</p>

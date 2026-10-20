@@ -14,6 +14,7 @@ A personal budgeting app for Turkey: daily safe-to-spend, bills and subscription
 - **Credit cards**: statement and due dates, estimated statement, limit usage.
 - **Category limits** and a comparison with the same point last month.
 - **Accounts & transfers** (Wallet tab): cash, bank and savings balances that update from each entry; transfers into savings count as saved; card statements can be marked as paid from an account.
+- **Gold & foreign currency, net worth**: USD/EUR/GBP and gold accounts (gram, çeyrek, yarım, tam, Ata), exchange rates fetched or typed, net worth after card debts with dollar and gold equivalents.
 - **Savings goals**: how much to put aside each month, with a USD equivalent.
 - **Backup**: export and restore all data as JSON.
 

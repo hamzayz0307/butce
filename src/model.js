@@ -4,6 +4,7 @@
 import { state, accountById, isSavingAcc } from './state.js';
 import { r2, pad, today, shiftDays, addMonths, daysInMonth, monthDiff } from './utils.js';
 import { curPeriod, inPeriod, dueInPeriod, dayInPeriod } from './period.js';
+import { toBase, isBaseCurrency } from './money.js';
 
 /* ---------- Installments (taksit) ---------- */
 // Which installment of `plan` falls in month `key`, and how much it is.
@@ -92,6 +93,36 @@ export function savedFlow(x) {
   if (!fromSaving && toSaving) return x.amount;
   if (fromSaving && !toSaving) return -(x.to_amount ?? x.amount);
   return 0;
+}
+
+// An account's worth in the app's currency (null if its exchange rate is missing)
+export function accountValue(acc) {
+  const bal = accountBalance(acc);
+  return isBaseCurrency(acc) ? bal : toBase(bal, acc.currency, acc.unit);
+}
+
+// What is owed on a card today: the open cycle, the last statement if it's still unpaid
+// and not yet past due, and installments billed after the open cycle.
+export function cardDebt(card, now = today()) {
+  const next = nextStatement(card, now), prev = prevStatement(card, now);
+  let debt = statementAmount(card, next);
+  if (!cardPaidTx(card, prev) && dueFor(card, prev) >= now) debt += statementAmount(card, prev);
+  const nextMonth = next.slice(0, 7);
+  for (const p of state.data.installments) if (p.card_id === card.id) debt += planRemaining(p, nextMonth);
+  return r2(debt);
+}
+
+// Everything owned minus everything owed, in the app's currency
+export function netWorth() {
+  const parts = { accounts: 0, cards: 0 };
+  let missing = false;
+  for (const a of state.data.accounts) {
+    const v = accountValue(a);
+    if (v == null) missing = true; else parts.accounts += v;
+  }
+  for (const c of state.data.cards) parts.cards += cardDebt(c);
+  const assets = r2(parts.accounts), liabilities = r2(parts.cards);
+  return { assets, liabilities, net: r2(assets - liabilities), missing, parts };
 }
 
 // The payment made for a card statement, if it was marked as paid

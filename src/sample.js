@@ -4,7 +4,8 @@ import { store } from './store.js';
 import { t } from './i18n.js';
 import { pad, today, shiftDays, curMonth, addMonths, daysInMonth } from './utils.js';
 import { curPeriod } from './period.js';
-import { refresh, done, ensureCategories } from './actions.js';
+import { refresh, done, ensureCategories, fetchRates } from './actions.js';
+import { rates } from './money.js';
 import { accountBalance, statementAmount, stmtDateIn, dueFor } from './model.js';
 
 const BILLS = [
@@ -40,6 +41,9 @@ export async function loadSample() {
   const cash = await store.insert('accounts', { name: 'Nakit', kind: 'cash', currency: 'TRY', opening_balance: 0, sort: 1 });
   const bank = await store.insert('accounts', { name: 'Garanti', kind: 'bank', currency: 'TRY', opening_balance: 0, sort: 2 });
   const vadeli = await store.insert('accounts', { name: 'Vadeli', kind: 'savings', currency: 'TRY', opening_balance: 0, sort: 3 });
+  const dolar = await store.insert('accounts', { name: 'Dolar', kind: 'fx', currency: 'USD', unit: null, opening_balance: 0, sort: 4 });
+  const ceyrek = await store.insert('accounts', { name: 'Çeyrekler', kind: 'gold', currency: 'XAU', unit: 'quarter', opening_balance: 0, sort: 5 });
+  await store.insert('transactions', { type: 'transfer', amount: 4150, to_amount: 100, account_id: bank.id, to_account_id: dolar.id, category_id: null, note: '', date: day(k1, 10) });
   await store.saveSettings({ default_account_id: bank.id });
 
   const bills = [];
@@ -88,7 +92,7 @@ export async function loadSample() {
   }
   // Pick opening balances so today's balances look lived-in
   await refresh();
-  for (const [acc, target] of [[cash, 1850], [bank, 24320], [vadeli, 58000]]) {
+  for (const [acc, target] of [[cash, 1850], [bank, 24320], [vadeli, 58000], [dolar, 1200], [ceyrek, 6]]) {
     const a = state.data.accounts.find(x => x.id === acc.id);
     await store.update('accounts', acc.id, { opening_balance: target - accountBalance(a) });
   }
@@ -100,4 +104,5 @@ export async function loadSample() {
   state.month = curPeriod();
   state.tab = 'home';
   await done(t('sample_loaded'));
+  if (!rates().USD || !rates().XAU) fetchRates({ quiet: true });
 }

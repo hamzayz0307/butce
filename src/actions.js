@@ -5,11 +5,12 @@ import {
 } from './state.js';
 import { store, TABLES } from './store.js';
 import { t, setLang, LANG } from './i18n.js';
+import { rates, fromBase, ratesUpdatedText } from './money.js';
 import { today, curMonth, r2, toNumber, norm } from './utils.js';
 import { curPeriod } from './period.js';
 import { numIn } from './format.js';
 import { DEFAULT_CATS } from './constants.js';
-import { billDue, billPaidTx, firstMonthFor, accountBalance } from './model.js';
+import { billDue, billPaidTx, firstMonthFor, accountBalance, netWorth } from './model.js';
 import { formErr, openCats } from './forms.js';
 import { closeSheet, toast } from './sheet.js';
 import { rememberCats } from './parser.js';
@@ -24,6 +25,7 @@ export async function refresh() {
 export async function done(msg) {
   closeSheet();
   await refresh();
+  recordNetWorth();
   render();
   if (msg) toast(msg);
 }
@@ -68,7 +70,10 @@ export const FORMS = {
     const amount = toNumber(f.amount.value), from = f.from.value, to = f.to.value;
     if (!(amount > 0)) return formErr(f, t('err_amount'));
     if (from === to) return formErr(f, t('err_same_acc'));
-    const row = { type: 'transfer', amount, to_amount: amount, account_id: from, to_account_id: to, category_id: null, note: f.note.value.trim(), date: f.date.value || today() };
+    const differ = !f.querySelector('[data-role=torow]').hidden;
+    const toAmount = differ ? toNumber(f.to_amount.value) : amount;
+    if (!(toAmount > 0)) return formErr(f, t('err_to_amount'));
+    const row = { type: 'transfer', amount, to_amount: toAmount, account_id: from, to_account_id: to, category_id: null, note: f.note.value.trim(), date: f.date.value || today() };
     if (f.dataset.id) await store.update('transactions', f.dataset.id, row);
     else await store.insert('transactions', row);
     done(t('saved'));
@@ -93,11 +98,14 @@ export const FORMS = {
     const kind = f.kind.value, a = f.dataset.id ? accountById(f.dataset.id) : null;
     // We store the opening balance; the typed figure is today's balance, so take back what's already booked.
     const booked = a ? r2(accountBalance(a) - (Number(a.opening_balance) || 0)) : 0;
-    const row = { name, kind, currency: a?.currency || state.settings.currency || 'TRY', opening_balance: r2(typed - booked) };
+    const base = state.settings.currency || 'TRY';
+    const currency = kind === 'gold' ? 'XAU' : kind === 'fx' ? (f.currency.disabled ? a.currency : f.currency.value) : base;
+    const unit = kind === 'gold' ? (f.unit.disabled ? a.unit : f.unit.value) : null;
+    const row = { name, kind, currency, unit, opening_balance: r2(typed - booked) };
     let id = a?.id;
     if (a) await store.update('accounts', a.id, row);
     else id = (await store.insert('accounts', { ...row, sort: Math.max(0, ...state.data.accounts.map(x => x.sort ?? 0)) + 1 })).id;
-    const wantDefault = kind !== 'savings' && f.is_default?.checked;
+    const wantDefault = (kind === 'cash' || kind === 'bank') && f.is_default?.checked;
     if (wantDefault) await store.saveSettings({ default_account_id: id });
     else if (state.settings.default_account_id === id) await store.saveSettings({ default_account_id: null });
     done(t('saved'));
@@ -281,8 +289,14 @@ export async function unpayBill(id, key) {
 
 /* ---------- Settings ---------- */
 export async function saveSetting(key, raw) {
+  if (key.startsWith('rate_')) {                       // rate_USD, rate_EUR, rate_GBP, rate_XAU
+    const v = toNumber(raw);
+    await store.saveSettings({ rates: { ...rates(), [key.slice(5)]: v > 0 ? v : null } });
+    await refresh(); recordNetWorth(); render();
+    return;
+  }
   let v = raw;
-  if (key === 'expected_income' || key === 'usd_rate') { v = toNumber(raw); v = v > 0 ? v : null; }
+  if (key === 'expected_income') { v = toNumber(raw); v = v > 0 ? v : null; }
   if (key === 'period_start_day') v = Number(raw) || 1;
   await store.saveSettings({ [key]: v });
   await refresh();
@@ -295,20 +309,49 @@ export async function setLanguage(lang) {
   await refresh(); render();
 }
 
-export async function fetchRate() {
+const TROY_OUNCE_G = 31.1034768;
+
+// Currencies from open.er-api.com (base USD); gold from gold-api.com (USD per troy ounce).
+// Either can fail (offline, blocked); whatever arrives is saved and the rest stays as entered.
+export async function fetchRates({ quiet = false } = {}) {
+  const got = {};
   try {
-    const r = await fetch('https://open.er-api.com/v6/latest/USD');
-    const j = await r.json();
-    const v = j?.rates?.TRY;
-    if (!v) throw new Error('no rate');
-    await store.saveSettings({ usd_rate: r2(v) });
-    await refresh(); render();
-    const inp = document.querySelector('[data-setting="usd_rate"]');
-    if (inp) inp.value = numIn(r2(v));
-    toast(t('rate_ok'));
-  } catch {
-    toast(t('rate_fail'));
+    const j = await (await fetch('https://open.er-api.com/v6/latest/USD')).json();
+    const r = j?.rates;
+    if (r?.TRY) {
+      got.USD = r2(r.TRY);
+      for (const c of ['EUR', 'GBP']) if (r[c]) got[c] = r2(r.TRY / r[c]);
+    }
+  } catch { /* keep going */ }
+  try {
+    const usd = got.USD || rates().USD;
+    const g = await (await fetch('https://api.gold-api.com/price/XAU')).json();
+    if (usd && g?.price > 0) got.XAU = r2(g.price * usd / TROY_OUNCE_G);
+  } catch { /* keep going */ }
+  if (Object.keys(got).length) {
+    await store.saveSettings({ rates: { ...rates(), ...got, updated_at: new Date().toISOString() } });
+    await refresh(); recordNetWorth(); render();
+    for (const [c, v] of Object.entries(got)) {
+      const inp = document.querySelector(`[data-setting="rate_${c}"]`);
+      if (inp) inp.value = numIn(v);
+    }
+    const when = document.querySelector('[data-role=rates-when]');
+    if (when) when.textContent = ratesUpdatedText();
   }
+  if (!quiet) toast(!got.USD ? t('rate_fail') : !got.XAU ? t('rate_partial') : t('rate_ok'));
+  return got;
+}
+
+// Keep one net worth figure per calendar month for the reports
+export function recordNetWorth() {
+  if (!state.data.accounts.length) return;
+  const nw = netWorth();
+  if (nw.missing) return;
+  const key = curMonth(), hist = { ...(state.settings.nw_history || {}) };
+  if (hist[key]?.net === nw.net) return;
+  hist[key] = { net: nw.net, usd: fromBase(nw.net, 'USD'), gold: fromBase(nw.net, 'XAU') };
+  state.settings.nw_history = hist;
+  store.saveSettings({ nw_history: hist });
 }
 
 /* ---------- Backup ---------- */
