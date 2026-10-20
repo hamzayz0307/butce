@@ -130,6 +130,9 @@ button{cursor:pointer}
 .chip[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--paper)}
 .chip input:checked+span{background:var(--ink);color:var(--paper);border-radius:999px}
 .chip input:focus-visible+span{outline:2px solid var(--accent);border-radius:999px}
+.search-sum{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:6px 2px 0;font-size:14px;color:var(--muted)}
+.search-sum b{font:600 15px var(--display);color:var(--ink)}
+.search-sum b.amt-in{color:var(--pos)}
 .search{width:100%;height:46px;border-radius:14px;border:1px solid var(--line);background:var(--surface);padding:0 14px;font-size:16px;margin:4px 0 10px}
 
 .btn{height:48px;border:0;border-radius:14px;padding:0 18px;font-weight:700;font-size:15px;display:inline-flex;align-items:center;justify-content:center;gap:8px}
