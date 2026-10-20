@@ -30,7 +30,8 @@ button{cursor:pointer}
 /* header */
 .top{position:sticky;top:0;z-index:5;background:var(--paper);display:flex;align-items:center;gap:2px;padding:calc(10px + env(safe-area-inset-top)) 0 10px}
 .top h1,.month-btn{font:600 21px/1.15 var(--display);letter-spacing:-.01em;margin:0;white-space:nowrap}
-.month-btn{background:none;border:0;padding:6px 6px;border-radius:10px}
+.month-btn{background:none;border:0;padding:6px 6px;border-radius:10px;display:flex;flex-direction:column;align-items:flex-start;text-align:left}
+.month-range{font:600 12.5px/1.2 var(--ui);color:var(--muted);letter-spacing:0;margin-top:2px}
 .spacer{flex:1}
 .icon-btn{width:38px;height:38px;border-radius:12px;border:0;background:transparent;display:grid;place-items:center;flex:none}
 .icon-btn:hover{background:var(--chip)}

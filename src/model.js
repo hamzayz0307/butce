@@ -1,11 +1,14 @@
-// Budget math: installments, bills, card statements, goals and month totals.
+// Budget math: installments, bills, card statements, goals and period totals.
 // Pure functions over `state.data` — no DOM, so they are covered by tests.
+// "key" is a budget period key (see period.js); card statements use calendar months.
 import { state } from './state.js';
-import { r2, pad, today, curMonth, shiftDays, addMonths, daysInMonth, monthDiff } from './utils.js';
+import { r2, pad, today, shiftDays, addMonths, daysInMonth, monthDiff } from './utils.js';
+import { curPeriod, inPeriod, dueInPeriod, dayInPeriod } from './period.js';
 
 /* ---------- Installments (taksit) ---------- */
 // Which installment of `plan` falls in month `key`, and how much it is.
 // Amounts are rounded to kuruş; the last installment absorbs the rounding.
+// A calendar month's installment is counted in the period that starts in that month.
 export function portionFor(plan, key) {
   const i = monthDiff(plan.first_month, key);
   if (i < 0 || i >= plan.count) return null;
@@ -32,10 +35,16 @@ export function planRemaining(plan, key) {
 }
 
 /* ---------- Transactions & bills ---------- */
-export const txInMonth = key => state.data.transactions.filter(x => x.date.slice(0, 7) === key);
+export const txInPeriod = key => state.data.transactions.filter(x => inPeriod(x.date, key));
 export const billsForMonth = key => state.data.bills.filter(b => (b.start_month || '0000-00') <= key);
-export const billDue = (b, key) => `${key}-${pad(Math.min(b.day, daysInMonth(key)))}`;
-export const billPaidTx = (b, key) => state.data.transactions.find(x => x.bill_id === b.id && x.bill_month === key);
+export const billDue = (b, key) => dueInPeriod(b.day, key);
+// A payment is matched by the due date it paid, so changing the period start day
+// doesn't mark a new due date as paid. Older entries only stored the month.
+const paidDue = (x, b) => x.bill_due || `${x.bill_month}-${pad(Math.min(b.day, daysInMonth(x.bill_month)))}`;
+export const billPaidTx = (b, key) => {
+  const due = billDue(b, key);
+  return state.data.transactions.find(x => x.bill_id === b.id && paidDue(x, b) === due);
+};
 
 /* ---------- Credit cards ---------- */
 export const stmtDateIn = (card, key) => `${key}-${pad(Math.min(card.statement_day, daysInMonth(key)))}`;
@@ -70,11 +79,11 @@ export function goalSaved(g) {
 
 /* ---------- Month totals ---------- */
 export function monthStats(key) {
-  const now = curMonth();
+  const now = curPeriod();
   const rel = key < now ? 'past' : key > now ? 'future' : 'current';
   const byCat = {};
   let actualIncome = 0, txSpent = 0, saved = 0, txCount = 0;
-  for (const x of txInMonth(key)) {
+  for (const x of txInPeriod(key)) {
     txCount++;
     if (x.type === 'income') actualIncome += x.amount;
     else if (x.type === 'saving') saved += x.amount;
@@ -97,10 +106,10 @@ export function monthStats(key) {
   };
 }
 
-// Spending per category up to a day of the month (for "same point last month" comparisons)
+// Spending per category up to the n-th day of a period (for "same point last month" comparisons)
 export function spentByCatUpTo(key, upto) {
   const out = {};
-  for (const x of txInMonth(key)) if (x.type === 'expense' && Number(x.date.slice(8)) <= upto) out[x.category_id] = (out[x.category_id] || 0) + x.amount;
+  for (const x of txInPeriod(key)) if (x.type === 'expense' && dayInPeriod(x.date, key) <= upto) out[x.category_id] = (out[x.category_id] || 0) + x.amount;
   for (const p of portionsInMonth(key)) out[p.plan.category_id] = (out[p.plan.category_id] || 0) + p.amount;
   return out;
 }
@@ -112,7 +121,7 @@ export const isEmptyApp = () =>
 // Unpaid bills (incl. overdue) and card payments due in the next two weeks
 export function upcomingItems() {
   const now = today(), horizon = shiftDays(now, 14), items = [];
-  const k0 = curMonth();
+  const k0 = curPeriod();
   for (const key of [k0, addMonths(k0, 1)]) {
     for (const b of billsForMonth(key)) {
       if (billPaidTx(b, key)) continue;

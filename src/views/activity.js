@@ -3,7 +3,7 @@ import { state, catById, catName, cardById, goalById } from '../state.js';
 import { t } from '../i18n.js';
 import { esc, norm, today, shiftDays } from '../utils.js';
 import { fmt, dateLong } from '../format.js';
-import { txInMonth, portionsInMonth } from '../model.js';
+import { txInPeriod, portionsInMonth } from '../model.js';
 import { ico } from './components.js';
 
 export function viewTx() {
@@ -31,7 +31,7 @@ function txRow(x) {
 
 export function txListHtml() {
   const key = state.month, f = state.txFilter, q = norm(f.q.trim());
-  let txs = txInMonth(key);
+  let txs = txInPeriod(key);
   let portions = portionsInMonth(key);
   if (f.type !== 'all') { txs = txs.filter(x => x.type === f.type); if (f.type === 'income') portions = []; }
   if (f.cat) { txs = txs.filter(x => x.category_id === f.cat); portions = portions.filter(p => p.plan.category_id === f.cat); }

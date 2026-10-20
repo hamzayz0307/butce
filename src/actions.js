@@ -3,6 +3,7 @@ import { state, DEFAULT_SETTINGS, catById, catName, catsOf, goalById, defaultCar
 import { store, TABLES } from './store.js';
 import { t, setLang, LANG } from './i18n.js';
 import { today, curMonth, r2, toNumber } from './utils.js';
+import { curPeriod } from './period.js';
 import { numIn } from './format.js';
 import { DEFAULT_CATS } from './constants.js';
 import { billDue, billPaidTx, firstMonthFor } from './model.js';
@@ -70,7 +71,7 @@ export const FORMS = {
     if (!(day >= 1 && day <= 31)) return formErr(f, t('err_day'));
     const row = { name, amount, day, category_id: f.category_id.value };
     if (f.dataset.id) await store.update('bills', f.dataset.id, row);
-    else await store.insert('bills', { ...row, start_month: curMonth() });
+    else await store.insert('bills', { ...row, start_month: curPeriod() });
     done(t('saved'));
   },
 
@@ -171,7 +172,7 @@ export async function payBill(id, key) {
   if (!b || billPaidTx(b, key)) return;
   await store.insert('transactions', {
     type: 'expense', amount: b.amount, category_id: b.category_id, note: b.name,
-    date: key === curMonth() ? today() : billDue(b, key), bill_id: b.id, bill_month: key, card_id: null
+    date: key === curPeriod() ? today() : billDue(b, key), bill_id: b.id, bill_month: key, bill_due: billDue(b, key), card_id: null
   });
   await refresh(); render();
 }
@@ -187,8 +188,11 @@ export async function unpayBill(id, key) {
 export async function saveSetting(key, raw) {
   let v = raw;
   if (key === 'expected_income' || key === 'usd_rate') { v = toNumber(raw); v = v > 0 ? v : null; }
+  if (key === 'period_start_day') v = Number(raw) || 1;
   await store.saveSettings({ [key]: v });
-  await refresh(); render();
+  await refresh();
+  if (key === 'period_start_day') { state.month = curPeriod(); state.barSel = null; }
+  render();
 }
 
 export async function setLanguage(lang) {
@@ -240,6 +244,6 @@ export async function wipeAll() {
   await store.wipe();
   await store.saveSettings({ lang });
   await refresh(); await ensureCategories();
-  state.month = curMonth();
+  state.month = curPeriod();
   done(t('wiped'));
 }

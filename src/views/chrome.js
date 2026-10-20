@@ -1,8 +1,8 @@
 // Top bar (month switcher) and bottom tab bar.
 import { state } from '../state.js';
 import { t } from '../i18n.js';
-import { $, curMonth } from '../utils.js';
-import { monthName } from '../format.js';
+import { $ } from '../utils.js';
+import { curPeriod, periodTitle, periodRange } from '../period.js';
 import { svg, IC } from './components.js';
 
 export function renderTop() {
@@ -12,10 +12,11 @@ export function renderTop() {
     el.innerHTML = `<h1>${t('tab_goals')}</h1><span class="spacer"></span>${settingsBtn}`;
     return;
   }
-  const notNow = state.month !== curMonth();
+  const notNow = state.month !== curPeriod();
+  const range = periodRange(state.month);
   el.innerHTML = `
     <button class="icon-btn" data-act="month" data-d="-1" aria-label="${t('prev_month')}">${svg(IC.left)}</button>
-    <h1><button class="month-btn" data-act="month-now">${monthName(state.month)}</button></h1>
+    <h1><button class="month-btn" data-act="month-now">${periodTitle(state.month)}${range ? `<span class="month-range">${range}</span>` : ''}</button></h1>
     <button class="icon-btn" data-act="month" data-d="1" aria-label="${t('next_month')}">${svg(IC.right)}</button>
     ${notNow ? `<button class="today-link" data-act="month-now">${t('this_month')}</button>` : ''}
     <span class="spacer"></span>${settingsBtn}`;

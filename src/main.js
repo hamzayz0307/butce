@@ -5,7 +5,8 @@ import './styles.css';
 
 import { state, cardById, goalById } from './state.js';
 import { t } from './i18n.js';
-import { $, esc, curMonth, addMonths } from './utils.js';
+import { $, esc, addMonths } from './utils.js';
+import { curPeriod } from './period.js';
 import { parseQuick } from './parser.js';
 import { render } from './render.js';
 import { txListHtml } from './views/activity.js';
@@ -41,7 +42,7 @@ function arm(el) {
 const ACTS = {
   tab: el => goTo(el.dataset.v),
   month: el => { state.month = addMonths(state.month, Number(el.dataset.d)); state.barSel = null; render(); },
-  'month-now': () => { state.month = curMonth(); state.barSel = null; render(); },
+  'month-now': () => { state.month = curPeriod(); state.barSel = null; render(); },
   settings: openSettings,
   close: closeSheet,
   add: el => openAdd(el.dataset.mode || 'quick'),
@@ -131,5 +132,6 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
 (async function start() {
   await refresh();
   await ensureCategories();
+  state.month = curPeriod();
   render();
 })();

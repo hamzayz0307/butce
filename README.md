@@ -5,6 +5,7 @@ A personal budgeting app for Turkey: daily safe-to-spend, bills and subscription
 ## Features
 
 - **Safe to spend today**: income minus spending, savings and unpaid bills, divided by the days left in the month.
+- **Payday-based month**: start the budget month on any day (e.g. the 15th, when the salary arrives).
 - **Quick entry**: `250 market, 80 taksi, +42000 maaş, 12000 telefon 6 taksit` creates four entries and guesses categories.
 - **Bills & subscriptions**: due-date reminders, one tap to mark as paid.
 - **Installments (taksit)**: monthly amount, what's left to pay, and the load on the next 6 months. Purchases after the card's statement day start next month.

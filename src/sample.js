@@ -3,6 +3,7 @@ import { state, catByKey } from './state.js';
 import { store } from './store.js';
 import { t } from './i18n.js';
 import { pad, curMonth, addMonths, daysInMonth } from './utils.js';
+import { curPeriod } from './period.js';
 import { refresh, done, ensureCategories } from './actions.js';
 
 const BILLS = [
@@ -50,7 +51,7 @@ export async function loadSample() {
     }
     for (const b of bills) {
       if (isCur && b.day >= dToday) continue;
-      await store.insert('transactions', { type: 'expense', amount: b.amount, category_id: b.category_id, note: b.name, date: day(key, b.day), bill_id: b.id, bill_month: key, card_id: null });
+      await store.insert('transactions', { type: 'expense', amount: b.amount, category_id: b.category_id, note: b.name, date: day(key, b.day), bill_id: b.id, bill_month: key, bill_due: day(key, b.day), card_id: null });
     }
   }
 
@@ -69,7 +70,7 @@ export async function loadSample() {
   for (const [key, lim] of [['groceries', 6000], ['food', 3000], ['fun', 2000], ['shopping', 6000]]) {
     await store.update('categories', K(key), { monthly_limit: lim });
   }
-  state.month = k0;
+  state.month = curPeriod();
   state.tab = 'home';
   await done(t('sample_loaded'));
 }

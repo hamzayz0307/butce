@@ -4,6 +4,7 @@ import { t, LANG } from './i18n.js';
 import { $, esc, today, addMonths, toNumber } from './utils.js';
 import { fmt, monthName, numIn } from './format.js';
 import { firstMonthFor } from './model.js';
+import { startDay, MAX_START_DAY } from './period.js';
 import { GOAL_EMOJIS } from './constants.js';
 import { ico, opt, field, amountInput } from './views/components.js';
 import { openSheet } from './sheet.js';
@@ -179,6 +180,7 @@ export function openSettings() {
   openSheet(t('settings'), `
     <div class="set-group"><h4>${t('s_lang')}</h4><div class="seg">${lb('tr', 'Türkçe')}${lb('en', 'English')}</div></div>
     ${field(t('s_currency'), `<select data-setting="currency">${['TRY', 'USD', 'EUR'].map(c => opt(c, c, (s.currency || 'TRY') === c)).join('')}</select>`)}
+    ${field(t('s_period'), `<select data-setting="period_start_day">${Array.from({ length: MAX_START_DAY }, (_, i) => opt(i + 1, i === 0 ? t('s_period_cal') : String(i + 1), startDay() === i + 1)).join('')}</select>`, `<p class="hint">${t('s_period_hint')}</p>`)}
     ${field(t('s_income'), `<input data-setting="expected_income" inputmode="decimal" value="${esc(numIn(s.expected_income))}" placeholder="0" autocomplete="off">`, `<p class="hint">${t('s_income_hint')}</p>`)}
     ${field(t('s_rate'), `<input data-setting="usd_rate" inputmode="decimal" value="${esc(numIn(s.usd_rate))}" placeholder="—" autocomplete="off">`, `<p class="hint">${t('s_rate_hint')}</p>`)}
     <button class="btn ghost small" data-act="fetchrate" style="margin-top:8px">${t('s_fetch')}</button>
