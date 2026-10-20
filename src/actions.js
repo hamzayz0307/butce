@@ -1,14 +1,15 @@
 // Everything that changes data: form saves, deletes, bill payments, backup, rates.
-import { state, DEFAULT_SETTINGS, catById, catName, catsOf, goalById, defaultCard } from './state.js';
+import { state, DEFAULT_SETTINGS, catById, catName, catsOf, goalById, defaultCard, fallbackCat } from './state.js';
 import { store, TABLES } from './store.js';
 import { t, setLang, LANG } from './i18n.js';
-import { today, curMonth, r2, toNumber } from './utils.js';
+import { today, curMonth, r2, toNumber, norm } from './utils.js';
 import { curPeriod } from './period.js';
 import { numIn } from './format.js';
 import { DEFAULT_CATS } from './constants.js';
 import { billDue, billPaidTx, firstMonthFor } from './model.js';
-import { formErr } from './forms.js';
+import { formErr, openCats } from './forms.js';
 import { closeSheet, toast } from './sheet.js';
+import { rememberCats } from './parser.js';
 import { render } from './render.js';
 
 export async function refresh() {
@@ -121,6 +122,27 @@ export const FORMS = {
     done(t('saved'));
   },
 
+  async cat(f) {
+    const type = f.dataset.type, c = f.dataset.id ? catById(f.dataset.id) : null;
+    const name = f.name.value.trim().replace(/\s+/g, ' ');
+    if (!name) return formErr(f, t('err_name'));
+    if (catsOf(type).some(x => x.id !== c?.id && norm(catName(x)) === norm(name))) return formErr(f, t('err_cat_exists'));
+    const words = new Map();
+    for (const w of f.keywords.value.split(',').map(v => v.trim()).filter(Boolean)) if (!words.has(norm(w))) words.set(norm(w), w);
+    const row = {
+      name: c?.key && name === t('cat_' + c.key) ? null : name,  // untouched built-in names keep following the language
+      emoji: f.emoji.value, color: f.color.value,
+      keywords: [...words.values()].slice(0, 30),
+      hidden: f.show.disabled ? false : !f.show.checked
+    };
+    if (type === 'expense') { const lim = toNumber(f.limit.value); row.monthly_limit = lim > 0 ? lim : null; }
+    if (c) await store.update('categories', c.id, row);
+    else await store.insert('categories', { ...row, key: null, type, sort: Math.max(0, ...state.data.categories.map(x => x.sort ?? 0)) + 1 });
+    await refresh(); render();
+    openCats(type);
+    toast(t('saved'));
+  },
+
   async limits(f) {
     for (const c of catsOf('expense')) {
       const v = toNumber(f['lim_' + c.id].value);
@@ -146,11 +168,23 @@ export async function saveQuick() {
       await store.insert('transactions', { type: x.type, amount: x.amount, category_id: x.category_id, note: x.note, date: x.date, card_id: null });
     }
   }
+  const corrected = items.filter(x => x.overridden);
+  if (corrected.length) await store.saveSettings({ quick_memory: rememberCats(corrected) });
   await done(t('added_n', { n: items.length }));
 }
 
 /* ---------- Deletes ---------- */
 export async function removeItem(kind, id) {
+  if (kind === 'cat') {
+    const c = catById(id), fb = fallbackCat(c.type);
+    for (const tb of ['transactions', 'bills', 'installments']) {
+      for (const x of state.data[tb].filter(v => v.category_id === id)) await store.update(tb, x.id, { category_id: fb.id });
+    }
+    await store.remove('categories', id);
+    await refresh(); render();
+    openCats(c.type);
+    return toast(t('deleted'));
+  }
   if (kind === 'tx') await store.remove('transactions', id);
   if (kind === 'bill') await store.remove('bills', id); // paid entries stay in history
   if (kind === 'inst') await store.remove('installments', id);

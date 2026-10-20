@@ -64,3 +64,41 @@ describe('quick entry', () => {
     expect(items.map(keyOf)).toEqual(['groceries', 'transport', 'food', 'fun']);
   });
 });
+
+describe('custom categories in quick entry', () => {
+  const addCat = c => { state.data.categories.push({ type: 'expense', emoji: '🐾', color: '#7C8A85', sort: 99, ...c }); };
+
+  it('uses the user’s own words first', () => {
+    addCat({ id: 'pets', key: null, name: 'Evcil hayvan', keywords: ['kedi', 'mama', 'veteriner'] });
+    expect(parseOne('120 kedi maması').category_id).toBe('pets');
+    expect(parseOne('350 veteriner').category_id).toBe('pets');
+  });
+
+  it('matches a category by its name', () => {
+    addCat({ id: 'pets', key: null, name: 'Kedi & Köpek' });
+    expect(parseOne('kedi köpek 80').category_id).toBe('pets');
+    expect(keyOf(parseOne('100 sağlık'))).toBe('health');
+  });
+
+  it('skips hidden categories and falls back to Other', () => {
+    state.data.categories.find(c => c.key === 'transport').hidden = true;
+    expect(keyOf(parseOne('80 taksi'))).toBe('other');
+  });
+
+  it('remembers a correction for the same description', async () => {
+    const { rememberCats } = await import('../src/parser.js');
+    state.settings = { ...state.settings, quick_memory: rememberCats([{ note: 'Kedi maması', category_id: 'shopping' }]) };
+    expect(parseOne('120 kedi maması').category_id).toBe('shopping');
+    state.settings = { ...state.settings, quick_memory: {} };
+  });
+
+  it('keeps the memory to a fixed size, dropping the oldest', async () => {
+    const { rememberCats } = await import('../src/parser.js');
+    state.settings = { ...state.settings, quick_memory: {} };
+    const items = Array.from({ length: 310 }, (_, i) => ({ note: 'not ' + i, category_id: 'food' }));
+    const mem = rememberCats(items);
+    expect(Object.keys(mem)).toHaveLength(300);
+    expect(mem['not 0']).toBeUndefined();
+    expect(mem['not 309']).toBe('food');
+  });
+});

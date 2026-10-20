@@ -3,7 +3,7 @@ import '@fontsource-variable/manrope';
 import '@fontsource-variable/bricolage-grotesque';
 import './styles.css';
 
-import { state, cardById, goalById } from './state.js';
+import { state, cardById, goalById, catById } from './state.js';
 import { t } from './i18n.js';
 import { $, esc, addMonths } from './utils.js';
 import { curPeriod } from './period.js';
@@ -13,7 +13,7 @@ import { txListHtml } from './views/activity.js';
 import { openSheet, closeSheet, sheetForm } from './sheet.js';
 import {
   openAdd, renderQuickPreview, txForm, updateTxFormBits, billForm, instForm, updateInstFormBits,
-  cardForm, goalForm, goalMoneyForm, limitsForm, openSettings, catOptions
+  cardForm, goalForm, goalMoneyForm, limitsForm, openSettings, catOptions, openCats, catForm
 } from './forms.js';
 import {
   refresh, ensureCategories, FORMS, saveQuick, removeItem, payBill, unpayBill,
@@ -61,7 +61,10 @@ const ACTS = {
   newgoal: () => openSheet(t('add_goal'), goalForm(null)),
   editgoal: el => openSheet(t('edit_goal'), goalForm(goalById(el.dataset.id))),
   goalmoney: el => { const g = goalById(el.dataset.id); if (g) openSheet(`${g.emoji} ${esc(g.name)}`, goalMoneyForm(g)); },
-  limits: () => openSheet(t('limits_title'), limitsForm()),
+  limits: el => openSheet(t('limits_title'), limitsForm(), el.closest('#sheet') ? 'settings' : null),
+  cats: el => openCats(el.dataset.v),
+  newcat: () => openSheet(t('add_cat'), catForm(null, state.catTab || 'expense'), 'cats'),
+  editcat: el => openSheet(t('edit_cat'), catForm(catById(el.dataset.id)), 'cats'),
   paytab: el => { state.payTab = el.dataset.v; render(); },
   'goto-cards': () => goTo('pay', 'cards'),
   'goto-inst': () => goTo('pay', 'inst'),
@@ -94,7 +97,7 @@ document.addEventListener('input', e => {
   const el = e.target;
   if (el.id === 'quick') {
     state.quickItems = parseQuick(el.value).map(x =>
-      (x.error || !state.quickOverrides[x.raw] ? x : { ...x, category_id: state.quickOverrides[x.raw] }));
+      (x.error || !state.quickOverrides[x.raw] ? x : { ...x, category_id: state.quickOverrides[x.raw], overridden: true }));
     renderQuickPreview();
   } else if (el.id === 'txq') {
     state.txFilter.q = el.value;
@@ -107,7 +110,7 @@ document.addEventListener('change', e => {
   const el = e.target;
   if (el.dataset.qi != null) {
     const x = state.quickItems[Number(el.dataset.qi)];
-    if (x) { x.category_id = el.value; state.quickOverrides[x.raw] = el.value; renderQuickPreview(); }
+    if (x) { x.category_id = el.value; x.overridden = true; state.quickOverrides[x.raw] = el.value; renderQuickPreview(); }
     return;
   }
   if (el.dataset.setting) { saveSetting(el.dataset.setting, el.value); return; }

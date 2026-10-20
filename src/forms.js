@@ -5,11 +5,12 @@ import { $, esc, today, addMonths, toNumber } from './utils.js';
 import { fmt, monthName, numIn } from './format.js';
 import { firstMonthFor } from './model.js';
 import { startDay, MAX_START_DAY } from './period.js';
-import { GOAL_EMOJIS } from './constants.js';
+import { GOAL_EMOJIS, CAT_EMOJIS, CAT_COLORS, FALLBACK_KEYS } from './constants.js';
 import { ico, opt, field, amountInput } from './views/components.js';
 import { openSheet } from './sheet.js';
 
-const catOptions = (type, sel) => catsOf(type).map(c => opt(c.id, `${c.emoji} ${catName(c)}`, c.id === sel)).join('');
+// Hidden categories are left out, unless the entry already uses one
+const catOptions = (type, sel) => catsOf(type).filter(c => !c.hidden || c.id === sel).map(c => opt(c.id, `${c.emoji} ${catName(c)}`, c.id === sel)).join('');
 const cardOptions = (sel, emptyLabel) => opt('', emptyLabel, !sel) + state.data.cards.map(c => opt(c.id, c.name, c.id === sel)).join('');
 const delBtn = (kind, id) => `<button type="button" class="btn danger" data-act="del" data-kind="${kind}" data-id="${id}">${t('delete')}</button>`;
 const formActions = (kind, id) =>
@@ -140,12 +141,9 @@ export function cardForm(c) {
 
 /* ---------- Goals ---------- */
 export function goalForm(g) {
-  const emojis = GOAL_EMOJIS.map(e => `<label class="chip" style="padding:0"><input class="sr" type="radio" name="emoji" value="${e}" ${(g?.emoji || '🎯') === e ? 'checked' : ''}><span style="display:block;padding:6px 10px;font-size:18px">${e}</span></label>`).join('');
   return `<form data-form="goal" data-id="${g?.id || ''}" class="form" novalidate>
     ${field(t('goal_name'), `<input name="name" value="${esc(g?.name || '')}" placeholder="${esc(t('goal_name_ph'))}" autofocus autocomplete="off">`)}
-    <fieldset class="field" style="border:0;padding:0;margin-inline:0">
-      <span style="display:block;font-size:13px;font-weight:700;color:var(--muted);margin-bottom:6px">${t('emoji')}</span>
-      <div class="chips" style="flex-wrap:wrap">${emojis}</div></fieldset>
+    ${emojiPicker(GOAL_EMOJIS, g?.emoji || '🎯')}
     <div class="grid2">${field(t('target'), `<input name="target" inputmode="decimal" value="${esc(numIn(g?.target))}" placeholder="0" autocomplete="off">`)}
       ${field(t('saved_start'), `<input name="initial_saved" inputmode="decimal" value="${esc(numIn(g?.initial_saved))}" placeholder="0" autocomplete="off">`)}</div>
     ${field(t('deadline'), `<input type="month" name="deadline" value="${g?.deadline || ''}">`)}
@@ -162,9 +160,53 @@ export function goalMoneyForm(g) {
     ${formActions('none', null)}</form>`;
 }
 
+/* ---------- Pickers ---------- */
+function emojiPicker(list, sel) {
+  const all = list.includes(sel) ? list : [sel, ...list];
+  return `<fieldset class="field pick-set"><legend>${t('emoji')}</legend><div class="pick">${all.map(e =>
+    `<label><input class="sr" type="radio" name="emoji" value="${e}" ${e === sel ? 'checked' : ''}><span class="em">${e}</span></label>`).join('')}</div></fieldset>`;
+}
+function colorPicker(sel) {
+  const all = CAT_COLORS.includes(sel) ? CAT_COLORS : [sel, ...CAT_COLORS];
+  return `<fieldset class="field pick-set"><legend>${t('cat_color')}</legend><div class="pick">${all.map((c, i) =>
+    `<label><input class="sr" type="radio" name="color" value="${c}" ${c === sel ? 'checked' : ''} aria-label="${t('cat_color')} ${i + 1}"><span class="sw" style="--c:${c}"></span></label>`).join('')}</div></fieldset>`;
+}
+
+/* ---------- Categories ---------- */
+export function openCats(type = state.catTab || 'expense') {
+  state.catTab = type;
+  const b = (v, label) => `<button data-act="cats" data-v="${v}" aria-pressed="${type === v}">${label}</button>`;
+  const rows = catsOf(type).map(c => {
+    const meta = [c.hidden ? t('cat_hidden') : '', Number(c.monthly_limit) > 0 ? t('lim_of', { amt: fmt(c.monthly_limit) }) : '',
+      c.keywords?.length ? t('cat_words_n', { n: c.keywords.length }) : ''].filter(Boolean).join(', ');
+    return `<button class="row${c.hidden ? ' is-hidden' : ''}" data-act="editcat" data-id="${c.id}">${ico(c)}
+      <span class="row-main"><span class="row-title">${esc(catName(c))}</span>${meta ? `<span class="row-meta">${esc(meta)}</span>` : ''}</span></button>`;
+  }).join('');
+  openSheet(t('cats_title'), `<div class="seg" role="group" style="margin-top:8px">${b('expense', t('f_exp'))}${b('income', t('f_inc'))}</div>
+    <div class="list list-in-sheet" style="margin-top:12px">${rows}</div>
+    <button class="btn ghost wide" data-act="newcat" style="margin-top:12px">${t('add_cat')}</button>`, 'settings');
+}
+
+export function catForm(c, type) {
+  type = c?.type || type;
+  const fixed = c && c.key === FALLBACK_KEYS[type];
+  const hint = c?.key ? t(fixed ? 'cat_fallback_hint' : 'cat_builtin_hint') : (c ? t('cat_del_hint') : '');
+  return `<form data-form="cat" data-id="${c?.id || ''}" data-type="${type}" class="form" novalidate>
+    ${field(t('name'), `<input name="name" value="${esc(c ? catName(c) : '')}" autocomplete="off" ${c ? '' : 'autofocus'} maxlength="40">`)}
+    ${emojiPicker(CAT_EMOJIS, c?.emoji || (type === 'income' ? '💰' : '🧾'))}
+    ${colorPicker(c?.color || CAT_COLORS[0])}
+    ${type === 'expense' ? field(t('cat_limit'), `<input name="limit" inputmode="decimal" value="${esc(numIn(c?.monthly_limit))}" placeholder="${t('limit_none_ph')}" autocomplete="off">`) : ''}
+    ${field(t('cat_words'), `<input name="keywords" value="${esc((c?.keywords || []).join(', '))}" placeholder="${esc(t(c?.key ? 'cat_words_ph_own' : 'cat_words_ph'))}" autocomplete="off">`, `<p class="hint">${t('cat_words_hint')}</p>`)}
+    <label class="check"><input type="checkbox" name="show" ${c?.hidden ? '' : 'checked'} ${fixed ? 'disabled' : ''}><span>${t('cat_show')}</span></label>
+    <p class="hint">${t('cat_hide_hint')}</p>
+    ${hint ? `<p class="hint">${hint}</p>` : ''}
+    <p class="err" data-role="err" role="alert"></p>
+    <div class="form-actions">${c && !c.key ? delBtn('cat', c.id) : ''}<button class="btn primary" type="submit">${t('save')}</button></div></form>`;
+}
+
 /* ---------- Category limits ---------- */
 export function limitsForm() {
-  const rows = catsOf('expense').map(c => `<label class="row">${ico(c)}
+  const rows = catsOf('expense').filter(c => !c.hidden).map(c => `<label class="row">${ico(c)}
       <span class="row-main"><span class="row-title">${esc(catName(c))}</span></span>
       <input name="lim_${c.id}" inputmode="decimal" value="${esc(numIn(c.monthly_limit))}" placeholder="${t('limit_none_ph')}" autocomplete="off"
         style="width:130px;height:42px;border-radius:11px;border:1px solid var(--line);background:var(--surface);padding:0 10px;font-size:16px;text-align:right"></label>`).join('');
@@ -184,7 +226,9 @@ export function openSettings() {
     ${field(t('s_income'), `<input data-setting="expected_income" inputmode="decimal" value="${esc(numIn(s.expected_income))}" placeholder="0" autocomplete="off">`, `<p class="hint">${t('s_income_hint')}</p>`)}
     ${field(t('s_rate'), `<input data-setting="usd_rate" inputmode="decimal" value="${esc(numIn(s.usd_rate))}" placeholder="—" autocomplete="off">`, `<p class="hint">${t('s_rate_hint')}</p>`)}
     <button class="btn ghost small" data-act="fetchrate" style="margin-top:8px">${t('s_fetch')}</button>
-    <div class="set-group"><h4>${t('s_limits')}</h4><button class="btn ghost wide" data-act="limits">${t('edit_limits')}</button></div>
+    <div class="set-group"><h4>${t('s_cats')}</h4><div class="grid2" style="gap:8px">
+      <button class="btn ghost" data-act="cats">${t('manage_cats')}</button>
+      <button class="btn ghost" data-act="limits">${t('edit_limits')}</button></div></div>
     <div class="set-group"><h4>${t('s_data')}</h4><p class="hint" style="margin:0 0 10px">${t('s_storage')}</p>
       <div style="display:grid;gap:8px">
         <button class="btn ghost" data-act="export">${t('s_export')}</button>

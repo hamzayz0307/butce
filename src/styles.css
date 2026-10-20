@@ -159,13 +159,29 @@ button{cursor:pointer}
 .qp select{max-width:150px;height:34px;border-radius:10px;border:1px solid var(--line);background:var(--paper);font-size:13.5px;padding:0 8px}
 .set-group{margin-top:22px}
 .set-group h4{margin:0 0 4px;font:600 15px var(--display)}
+.pick-set{border:0;padding:0;margin-inline:0;min-width:0}
+.pick-set legend{display:block;padding:0;font-size:13px;font-weight:700;color:var(--muted);margin-bottom:6px}
+.pick{display:flex;flex-wrap:wrap;gap:6px}
+.pick .em{display:grid;place-items:center;width:42px;height:42px;border-radius:12px;background:var(--paper);border:1px solid var(--line);font-size:20px;cursor:pointer}
+.pick input:checked+.em{background:var(--surface);border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.pick .sw{display:block;width:34px;height:34px;border-radius:50%;background:var(--c);border:3px solid var(--surface);box-shadow:0 0 0 1px var(--line);cursor:pointer}
+.pick input:checked+.sw{box-shadow:0 0 0 2px var(--ink)}
+.pick input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}
+.check{display:flex;align-items:center;gap:10px;margin-top:16px;font-weight:600}
+.check input{width:20px;height:20px;margin:0;accent-color:var(--note);flex:none}
+.check input:disabled+span{color:var(--muted)}
+.list-in-sheet{background:var(--paper)}
+.row-main>span{display:block}
+.row.is-hidden .ico,.row.is-hidden .row-title{opacity:.5}
 
 /* sheet */
 dialog#sheet{width:100%;max-width:480px;margin:auto auto 0;padding:0;border:0;border-radius:24px 24px 0 0;background:var(--surface);color:var(--ink);max-height:92dvh;overscroll-behavior:contain}
 dialog#sheet::backdrop{background:rgba(8,18,15,.5)}
 .sheet-head{position:sticky;top:0;z-index:1;background:var(--surface);display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px 6px 20px}
 .sheet-head::before{content:"";position:absolute;top:7px;left:50%;width:38px;height:4px;margin-left:-19px;border-radius:2px;background:var(--line)}
-.sheet-head h3{margin:12px 0 0;font:600 20px/1.2 var(--display)}
+.sheet-head h3{flex:1;margin:12px 0 0;font:600 20px/1.2 var(--display)}
+.sheet-head .back{margin:12px -4px 0 -10px}
+.sheet-head .icon-btn:last-child{margin-top:12px}
 .sheet-body{padding:6px 20px calc(24px + env(safe-area-inset-bottom))}
 @media (min-width:560px){dialog#sheet{margin:auto;border-radius:24px}}
 

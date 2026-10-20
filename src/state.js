@@ -2,6 +2,7 @@
 import { TABLES } from './store.js';
 import { t } from './i18n.js';
 import { curMonth } from './utils.js';
+import { FALLBACK_KEYS } from './constants.js';
 
 const browserLang = typeof navigator !== 'undefined' ? (navigator.language || 'tr') : 'tr';
 
@@ -29,7 +30,12 @@ export const state = {
 export const catById = id => state.data.categories.find(c => c.id === id);
 export const catByKey = key => state.data.categories.find(c => c.key === key);
 export const catName = c => (c ? (c.name || t('cat_' + c.key)) : t('cat_other'));
-export const catsOf = type => state.data.categories.filter(c => c.type === type).sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
+const isFallback = c => c.key === FALLBACK_KEYS[c.type];
+// Categories of a type in display order; "Other" always last
+export const catsOf = type => state.data.categories.filter(c => c.type === type)
+  .sort((a, b) => (isFallback(a) - isFallback(b)) || ((a.sort ?? 0) - (b.sort ?? 0)));
+export const visibleCatsOf = type => catsOf(type).filter(c => !c.hidden);
+export const fallbackCat = type => catByKey(FALLBACK_KEYS[type]);
 export const cardById = id => state.data.cards.find(c => c.id === id);
 export const goalById = id => state.data.goals.find(g => g.id === id);
 export const defaultCard = () => state.data.cards.find(c => c.id === state.settings.default_card_id) || state.data.cards[0] || null;

@@ -1,20 +1,53 @@
 // Quick entry: "250 market, 80 taksi, +42000 maaş, 12000 telefon 6 taksit"
-import { KEYWORDS, INCOME_KEYS } from './constants.js';
+import { KEYWORDS } from './constants.js';
 import { norm, today, shiftDays, toNumber } from './utils.js';
 import { capFirst } from './format.js';
-import { catByKey } from './state.js';
+import { state, catById, catByKey, catName, visibleCatsOf, fallbackCat } from './state.js';
 
-// Returns the category key a text points to, or null. `type` is 'expense' or 'income'.
+// Lowercase, fold Turkish letters, keep only letters, digits and single spaces
+const clean = s => norm(s).replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+const MEMORY_MAX = 300;
+
+// The category the user picked for this exact description before, if any
+export function learnedCat(note) {
+  const id = state.settings.quick_memory?.[clean(note)];
+  const c = id && catById(id);
+  return c && !c.hidden ? c : null;
+}
+
+// Remember corrections from the quick-entry preview: { 'kedi mamasi': categoryId }
+export function rememberCats(items) {
+  const mem = { ...(state.settings.quick_memory || {}) };
+  for (const x of items) {
+    const k = clean(x.note);
+    if (!k) continue;
+    delete mem[k];           // re-insert so it counts as the newest
+    mem[k] = x.category_id;
+  }
+  const keys = Object.keys(mem);
+  for (const k of keys.slice(0, Math.max(0, keys.length - MEMORY_MAX))) delete mem[k];
+  return mem;
+}
+
+// Returns the id of the category a text points to, or null. `type` is 'expense' or 'income'.
+// Order: the user's own words and category names, then the built-in word list.
 export function matchCategory(text, type) {
-  const n = ' ' + norm(text).replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ') + ' ';
+  const n = ' ' + clean(text) + ' ';
   const tokens = n.trim().split(' ').filter(Boolean);
+  const hit = raw => {
+    const w = clean(raw);
+    if (!w) return false;
+    if (w.includes(' ')) return n.includes(' ' + w);
+    return tokens.some(tk => (w.length <= 3 ? tk === w : tk.startsWith(w)));
+  };
+  for (const c of visibleCatsOf(type)) {
+    if ([...(c.keywords || []), catName(c)].some(hit)) return c.id;
+  }
   for (const [key, words] of Object.entries(KEYWORDS)) {
-    const isInc = INCOME_KEYS.includes(key);
-    if ((type === 'income') !== isInc) continue;
-    for (const w of words) {
-      if (w.includes(' ')) { if (n.includes(' ' + w)) return key; }
-      else if (tokens.some(tk => (w.length <= 3 ? tk === w : tk.startsWith(w)))) return key;
-    }
+    const c = catByKey(key);
+    if (!c || c.type !== type || c.hidden) continue;
+    if (words.some(hit)) return c.id;
   }
   return null;
 }
@@ -42,13 +75,15 @@ export function parseOne(raw) {
   s = s.replace(am[0], ' ');
 
   const note = s.replace(/\s+/g, ' ').trim();
-  if (!type) type = matchCategory(note, 'income') ? 'income' : 'expense';
-  const key = matchCategory(note, type) || (type === 'income' ? 'other_income' : 'other');
-  const cat = catByKey(key);
+  let catId = null;
+  const learned = learnedCat(note);
+  if (learned && (!type || learned.type === type)) { type = learned.type; catId = learned.id; }
+  if (!type) { catId = matchCategory(note, 'income'); type = catId ? 'income' : 'expense'; }
+  catId = catId || matchCategory(note, type) || fallbackCat(type)?.id || null;
   return {
     raw, type, amount, date,
     note: capFirst(note),
     count: type === 'expense' && count >= 2 && count <= 36 ? count : 1,
-    category_id: cat ? cat.id : null
+    category_id: catId
   };
 }

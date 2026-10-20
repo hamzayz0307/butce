@@ -39,3 +39,14 @@ export const KEYWORDS = {
 };
 export const INCOME_KEYS = ['salary', 'scholarship', 'allowance', 'side', 'other_income'];
 export const GOAL_EMOJIS = ['🎯', '💻', '🏖️', '🚗', '🏠', '🎓', '📱', '🛟', '💍', '✈️'];
+
+// Choices when creating or editing a category
+export const CAT_EMOJIS = [
+  '🛒', '🍽️', '☕', '🍺', '🚕', '🚗', '⛽', '🚌', '✈️', '🏠', '💡', '📱', '🌐', '🔁', '🛍️', '👕',
+  '💄', '💇', '🎟️', '🎮', '🎬', '🎵', '💊', '🏋️', '📚', '🎓', '👶', '🐾', '🎁', '❤️', '🔧', '🧾',
+  '💼', '💰', '🏦', '📈', '🪙', '🎯'
+];
+export const CAT_COLORS = ['#4E9A6A', '#2F95A6', '#4C7DBF', '#7D5CB0', '#8E6CC9', '#B65A86', '#C2413A', '#D08A3C', '#B8962E', '#7E8C3A', '#7C8A85'];
+
+// Every entry needs a category, so these two can't be hidden or deleted
+export const FALLBACK_KEYS = { expense: 'other', income: 'other_income' };

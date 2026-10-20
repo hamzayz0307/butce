@@ -6,8 +6,10 @@ import { svg, IC } from './views/components.js';
 const sheet = $('#sheet');
 sheet.addEventListener('click', e => { if (e.target === sheet) closeSheet(); }); // tap on the backdrop
 
-export function openSheet(title, body) {
-  $('#sheet-inner').innerHTML = `<div class="sheet-head"><h3 id="sheet-title">${title}</h3>
+// `back` names a data-act to show a back arrow (e.g. 'settings' to return there)
+export function openSheet(title, body, back) {
+  const backBtn = back ? `<button class="icon-btn back" data-act="${back}" aria-label="${t('back')}">${svg(IC.left, 20)}</button>` : '';
+  $('#sheet-inner').innerHTML = `<div class="sheet-head">${backBtn}<h3 id="sheet-title">${title}</h3>
     <button class="icon-btn" data-act="close" aria-label="${t('close')}">${svg(IC.x, 20)}</button></div>
     <div class="sheet-body">${body}</div>`;
   if (!sheet.open) sheet.showModal();
