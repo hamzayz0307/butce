@@ -10,7 +10,7 @@ import { today, curMonth, r2, toNumber, norm } from './utils.js';
 import { curPeriod } from './period.js';
 import { numIn } from './format.js';
 import { DEFAULT_CATS } from './constants.js';
-import { billDue, billPaidTx, firstMonthFor, accountBalance, netWorth } from './model.js';
+import { billDue, billPaidTx, firstMonthFor, accountBalance, netWorth, loanPaidTx, debtOpenTx } from './model.js';
 import { formErr, openCats } from './forms.js';
 import { closeSheet, toast } from './sheet.js';
 import { rememberCats } from './parser.js';
@@ -197,6 +197,51 @@ export const FORMS = {
     toast(t('saved'));
   },
 
+  async loan(f) {
+    const name = f.name.value.trim(), payment = toNumber(f.payment.value), count = Number(f.count.value);
+    if (!name) return formErr(f, t('err_name'));
+    if (!(payment > 0)) return formErr(f, t('err_amount'));
+    if (!(count >= 1 && count <= 360)) return formErr(f, t('err_loan_count'));
+    if (!f.first_date.value) return formErr(f, t('err_date'));
+    const principal = toNumber(f.principal.value), rate = toNumber(f.rate.value);
+    const row = {
+      name, payment, count, first_date: f.first_date.value, category_id: f.category_id.value,
+      principal: principal > 0 ? principal : null, rate: rate >= 0 ? rate : null, loan_kind: f.loan_kind.value
+    };
+    if (f.dataset.id) await store.update('loans', f.dataset.id, row);
+    else await store.insert('loans', row);
+    done(t('saved'));
+  },
+
+  async debt(f) {
+    const person = f.person.value.trim(), amount = toNumber(f.amount.value);
+    if (!person) return formErr(f, t('err_name'));
+    if (!(amount > 0)) return formErr(f, t('err_amount'));
+    const direction = f.direction.value, date = f.date.value || today();
+    const row = { person, direction, amount, date, due_date: f.due_date.value || null, note: f.note.value.trim() };
+    let d = f.dataset.id ? state.data.debts.find(v => v.id === f.dataset.id) : null;
+    if (d) await store.update('debts', d.id, row);
+    else d = await store.insert('debts', row);
+    // The money changing hands: out when lending, in when borrowing
+    const open = debtOpenTx(d);
+    const [kind, pid] = (f.pay?.value || ':').split(':');
+    const move = { type: 'debt', debt_id: d.id, repayment: false, amount: direction === 'lent' ? -amount : amount, date, note: person, category_id: null, account_id: kind === 'a' ? pid : null };
+    if (f.moved.checked) { if (open) await store.update('transactions', open.id, move); else await store.insert('transactions', move); }
+    else if (open) await store.remove('transactions', open.id);
+    done(t('saved'));
+  },
+
+  async debtpay(f) {
+    const amount = toNumber(f.amount.value);
+    if (!(amount > 0)) return formErr(f, t('err_amount'));
+    const d = state.data.debts.find(v => v.id === f.dataset.debt);
+    const [kind, pid] = (f.pay?.value || ':').split(':');
+    const row = { type: 'debt', debt_id: d.id, repayment: true, amount: d.direction === 'lent' ? amount : -amount, date: f.date.value || today(), note: d.person, category_id: null, account_id: kind === 'a' ? pid : null };
+    if (f.dataset.id) await store.update('transactions', f.dataset.id, row);
+    else await store.insert('transactions', row);
+    done(t('saved'));
+  },
+
   async limits(f) {
     for (const c of catsOf('expense')) {
       const v = toNumber(f['lim_' + c.id].value);
@@ -234,6 +279,12 @@ export async function saveQuick() {
 
 /* ---------- Deletes ---------- */
 export async function removeItem(kind, id) {
+  if (kind === 'loan') { await store.remove('loans', id); return done(t('deleted')); }  // paid installments stay in history
+  if (kind === 'debt') {
+    for (const x of state.data.transactions.filter(v => v.debt_id === id)) await store.remove('transactions', x.id);
+    await store.remove('debts', id);
+    return done(t('deleted'));
+  }
   if (kind === 'account') {
     for (const x of state.data.transactions) {
       if (x.type === 'transfer' && (x.account_id === id || x.to_account_id === id)) await store.remove('transactions', x.id);
@@ -278,6 +329,25 @@ export async function payBill(id, key) {
     card_id: null, account_id: defaultAccount()?.id || null
   });
   await refresh(); render();
+}
+
+export async function payLoan(id, due) {
+  const loan = state.data.loans.find(v => v.id === id);
+  if (!loan || loanPaidTx(loan, due)) return;
+  const loanCat = state.data.categories.find(c => c.key === 'loan')?.id;
+  await store.insert('transactions', {
+    type: 'expense', amount: loan.payment, category_id: loan.category_id || loanCat, note: loan.name,
+    date: due <= today() || due.slice(0, 7) === today().slice(0, 7) ? today() : due,
+    loan_id: loan.id, loan_due: due, card_id: null, account_id: defaultAccount()?.id || null
+  });
+  await refresh(); recordNetWorth(); render();
+}
+
+export async function unpayLoan(id, due) {
+  const loan = state.data.loans.find(v => v.id === id), x = loan && loanPaidTx(loan, due);
+  if (!x) return;
+  await store.remove('transactions', x.id);
+  await refresh(); recordNetWorth(); render();
 }
 
 export async function unpayBill(id, key) {

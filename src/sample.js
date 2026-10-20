@@ -6,7 +6,7 @@ import { pad, today, shiftDays, curMonth, addMonths, daysInMonth } from './utils
 import { curPeriod } from './period.js';
 import { refresh, done, ensureCategories, fetchRates } from './actions.js';
 import { rates } from './money.js';
-import { accountBalance, statementAmount, stmtDateIn, dueFor } from './model.js';
+import { accountBalance, statementAmount, stmtDateIn, dueFor, loanPayment, LOAN_TAX } from './model.js';
 
 const BILLS = [
   ['Kira', 15000, 3, 'rent'], ['Spor salonu', 1200, 1, 'health'], ['Netflix', 230, 11, 'subscriptions'],
@@ -35,6 +35,7 @@ export async function loadSample() {
   const K = key => catByKey(key).id;
   const now = new Date(), k0 = curMonth(), k1 = addMonths(k0, -1), k2 = addMonths(k0, -2), dToday = now.getDate();
   const day = (key, d) => `${key}-${pad(Math.min(d, daysInMonth(key)))}`;
+  const now0 = () => today();
 
   const bonus = await store.insert('cards', { name: 'Bonus', statement_day: 8, due_day: 18, limit: 60000 });
   const world = await store.insert('cards', { name: 'World', statement_day: 22, due_day: 2, limit: 40000 });
@@ -79,13 +80,29 @@ export async function loadSample() {
   await store.insert('transactions', { type: 'saving', amount: 1000, goal_id: trip.id, note: trip.name, category_id: null, date: day(k1, 2) });
   await store.insert('transactions', { type: 'saving', amount: 2000, goal_id: laptop.id, note: laptop.name, category_id: null, date: day(k0, Math.min(2, dToday)) });
 
+  // A personal loan taken five months ago, paid on the 5th
+  const payment = loanPayment(50000, 0.0329 * (1 + LOAN_TAX.consumer), 24);
+  const loan = await store.insert('loans', {
+    name: 'İhtiyaç kredisi', payment, count: 24, first_date: day(addMonths(k0, -5), 5), principal: 50000,
+    rate: 3.29, loan_kind: 'consumer', category_id: K('loan')
+  });
+  for (const key of [k1, k0]) {
+    const due = day(key, 5);
+    if (due <= now0()) await store.insert('transactions', { type: 'expense', amount: payment, category_id: K('loan'), note: loan.name, date: due, loan_id: loan.id, loan_due: due, card_id: null, account_id: bank.id });
+  }
+  // Money lent to and borrowed from friends
+  const ali = await store.insert('debts', { person: 'Ali', direction: 'lent', amount: 1500, date: day(k1, 20), due_date: shiftDays(today(), 10), note: 'Konser bileti' });
+  await store.insert('transactions', { type: 'debt', debt_id: ali.id, repayment: false, amount: -1500, date: day(k1, 20), note: 'Ali', category_id: null, account_id: cash.id });
+  const ayse = await store.insert('debts', { person: 'Ayşe', direction: 'borrowed', amount: 800, date: day(k1, 26), due_date: shiftDays(today(), 5), note: '' });
+  await store.insert('transactions', { type: 'debt', debt_id: ayse.id, repayment: false, amount: 800, date: day(k1, 26), note: 'Ayşe', category_id: null, account_id: cash.id });
+  await store.insert('transactions', { type: 'debt', debt_id: ayse.id, repayment: true, amount: -300, date: day(k0, Math.min(dToday, 3)), note: 'Ayşe', category_id: null, account_id: cash.id });
+
   // Card statements that were already due are paid from the bank
   await refresh();
-  const now0 = today();
   for (const card of [bonus, world]) {
     for (const key of [k1, k0]) {
       const stmt = stmtDateIn(card, key), due = dueFor(card, stmt);
-      if (due >= now0) continue;
+      if (due >= now0()) continue;
       const amount = statementAmount(card, stmt);
       if (amount > 0) await store.insert('transactions', { type: 'card_payment', amount, card_id: card.id, stmt, account_id: bank.id, category_id: null, note: card.name, date: shiftDays(due, -1) });
     }

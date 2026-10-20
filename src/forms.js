@@ -4,9 +4,9 @@ import {
   defaultAccount, accEmoji, isSavingAcc
 } from './state.js';
 import { t, LANG } from './i18n.js';
-import { $, esc, today, addMonths, toNumber } from './utils.js';
+import { $, esc, today, addMonths, toNumber, r2 } from './utils.js';
 import { fmt, monthName, numIn, dateShort } from './format.js';
-import { firstMonthFor, dueFor, accountBalance } from './model.js';
+import { firstMonthFor, dueFor, accountBalance, debtLeft, debtOpenTx, loanPayment, LOAN_TAX } from './model.js';
 import { startDay, MAX_START_DAY } from './period.js';
 import { FX, GOLD_UNITS, rates, rateTRY, isBaseCurrency, ratesUpdatedText } from './money.js';
 import { GOAL_EMOJIS, CAT_EMOJIS, CAT_COLORS, FALLBACK_KEYS } from './constants.js';
@@ -85,6 +85,10 @@ export function txForm(x, draft = {}) {
   if (type === 'saving') return savingForm(x);
   if (type === 'transfer') return transferForm(x, draft);
   if (type === 'card_payment') return cardPayForm(x);
+  if (type === 'debt') {
+    const d = state.data.debts.find(v => v.id === x.debt_id);
+    return x.repayment ? debtPayForm(d, x) : debtForm(d);
+  }
   const isNew = !x;
   const sel = isNew ? (draft.pay ?? defaultPay()) : paySel(x);
   const showPay = spendAccounts().length > 0 || (type === 'expense' && state.data.cards.length > 0);
@@ -196,6 +200,74 @@ function updateTransferAmounts(f, from, to) {
   const amt = toNumber(f.amount.value);
   f.to_amount.value = amt > 0 ? numIn(Math.round(amt * rf * grams(from) / (rt * grams(to)) * 100) / 100) : '';
 }
+
+/* ---------- Bank loans ---------- */
+export function loanForm(l) {
+  const firstDefault = (() => { const d = new Date(); d.setMonth(d.getMonth() + 1); return d.toISOString().slice(0, 10); })();
+  const loanCat = state.data.categories.find(c => c.key === 'loan')?.id;
+  return `<form data-form="loan" data-id="${l?.id || ''}" class="form" novalidate>
+    ${field(t('name'), `<input name="name" value="${esc(l?.name || '')}" placeholder="${esc(t('loan_name_ph'))}" ${l ? '' : 'autofocus'} autocomplete="off" maxlength="40">`)}
+    <div class="grid2">${field(t('loan_payment'), `<input name="payment" inputmode="decimal" value="${esc(numIn(l?.payment))}" placeholder="0" autocomplete="off">`)}
+      ${field(t('loan_count'), `<input name="count" type="number" min="1" max="360" inputmode="numeric" value="${l?.count || 12}">`)}</div>
+    ${field(t('loan_first'), `<input type="date" name="first_date" value="${l?.first_date || firstDefault}">`)}
+    ${field(t('loan_principal'), `<input name="principal" inputmode="decimal" value="${esc(numIn(l?.principal))}" placeholder="0" autocomplete="off">`)}
+    <p class="hint" data-role="loancost"></p>
+    <details class="calc"><summary>${t('loan_calc')}</summary>
+      ${field(t('loan_kind'), `<select name="loan_kind">${opt('consumer', t('loan_kind_consumer'), (l?.loan_kind || 'consumer') === 'consumer')}${opt('housing', t('loan_kind_housing'), l?.loan_kind === 'housing')}</select>`)}
+      ${field(t('loan_rate'), `<input name="rate" inputmode="decimal" value="${esc(numIn(l?.rate))}" placeholder="3,49" autocomplete="off">`)}
+      <button type="button" class="btn ghost small" data-act="loancalc" style="margin-top:10px">${t('loan_calc_btn')}</button>
+      <p class="hint">${t('loan_calc_hint')}</p>
+    </details>
+    ${field(t('category'), `<select name="category_id">${catOptions('expense', l?.category_id || loanCat)}</select>`)}
+    ${formActions('loan', l?.id)}</form>`;
+}
+
+export function updateLoanFormBits(f) {
+  const pay = toNumber(f.payment.value), n = Number(f.count.value), principal = toNumber(f.principal.value);
+  const out = f.querySelector('[data-role=loancost]');
+  out.textContent = pay > 0 && n > 0 && principal > 0
+    ? t('loan_cost', { total: fmt(pay * n), cost: fmt(Math.max(0, pay * n - principal)) }) : '';
+}
+
+// "Taksiti hesapla": fill the monthly payment from the amount, rate and term
+export function calcLoan(f) {
+  const principal = toNumber(f.principal.value), n = Number(f.count.value), rate = toNumber(f.rate.value);
+  if (!(principal > 0) || !(n > 0) || !(rate >= 0) || Number.isNaN(rate)) return formErr(f, t('err_loan_calc'));
+  formErr(f, '');
+  const monthly = rate / 100 * (1 + (LOAN_TAX[f.loan_kind.value] ?? 0));
+  f.payment.value = numIn(loanPayment(principal, monthly, n));
+  updateLoanFormBits(f);
+}
+
+/* ---------- Personal debts ---------- */
+export function debtForm(d) {
+  const dir = d?.direction || 'lent', open = d ? debtOpenTx(d) : null;
+  const radio = (v, label) => `<label><input class="sr" type="radio" name="direction" value="${v}" ${dir === v ? 'checked' : ''}><span>${label}</span></label>`;
+  const moved = d ? !!open : true;
+  return `<form data-form="debt" data-id="${d?.id || ''}" class="form" novalidate>
+    <div class="seg" role="radiogroup" style="margin-top:8px">${radio('lent', t('debt_lent'))}${radio('borrowed', t('debt_borrowed'))}</div>
+    ${field(t('debt_person'), `<input name="person" value="${esc(d?.person || '')}" placeholder="${esc(t('debt_person_ph'))}" ${d ? '' : 'autofocus'} autocomplete="off" maxlength="40">`)}
+    ${field(t('amount'), amountInput('amount', d?.amount, false))}
+    <div class="grid2">${field(t('date'), dateInput(d?.date))}
+      ${field(t('debt_due'), `<input type="date" name="due_date" value="${d?.due_date || ''}">`)}</div>
+    ${field(t('note'), `<input name="note" value="${esc(d?.note || '')}" autocomplete="off" maxlength="80">`)}
+    <label class="check"><input type="checkbox" name="moved" ${moved ? 'checked' : ''}><span>${t('debt_moved')}</span></label>
+    <p class="hint">${t('debt_moved_hint')}</p>
+    ${spendAccounts().length ? `<div data-role="accrow" ${moved ? '' : 'hidden'}>${field(t('account'), `<select name="pay">${payOptions('income', open ? paySel(open) : defaultPay())}</select>`)}</div>` : ''}
+    ${formActions('debt', d?.id)}</form>`;
+}
+
+// Money coming back (or paid back) on a debt. `x` is an existing repayment to edit.
+export function debtPayForm(d, x) {
+  const lent = d.direction === 'lent';
+  return `<form data-form="debtpay" data-debt="${d.id}" data-id="${x?.id || ''}" class="form" novalidate>
+    <p class="hint" style="margin-top:4px">${esc(t('debt_left', { name: d.person, amt: fmt(debtLeft(d)) }))}</p>
+    ${field(t('amount'), amountInput('amount', x ? Math.abs(x.amount) : debtLeft(d)))}
+    ${spendAccounts().length ? field(t('account'), `<select name="pay">${payOptions('income', x ? paySel(x) : defaultPay())}</select>`) : ''}
+    ${field(t('date'), dateInput(x?.date))}
+    ${formActions('tx', x?.id)}</form>`;
+}
+export const debtPayTitle = d => t(d.direction === 'lent' ? 'debt_pay_lent' : 'debt_pay_borrowed');
 
 /* ---------- Accounts ---------- */
 export function accountForm(a) {

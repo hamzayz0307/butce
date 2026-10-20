@@ -14,10 +14,11 @@ import { openSheet, closeSheet, sheetForm } from './sheet.js';
 import {
   openAdd, renderQuickPreview, txForm, updateTxFormBits, billForm, instForm, updateInstFormBits,
   cardForm, goalForm, goalMoneyForm, limitsForm, openSettings, catOptions, openCats, catForm,
-  payOptions, formDraft, accountForm, updateAccFormBits, cardPayForm
+  payOptions, formDraft, accountForm, updateAccFormBits, cardPayForm,
+  loanForm, updateLoanFormBits, calcLoan, debtForm, debtPayForm, debtPayTitle
 } from './forms.js';
 import {
-  refresh, ensureCategories, FORMS, saveQuick, removeItem, payBill, unpayBill,
+  refresh, ensureCategories, FORMS, saveQuick, removeItem, payBill, unpayBill, payLoan, unpayLoan,
   saveSetting, setLanguage, fetchRates, exportData, importFile, wipeAll, recordNetWorth
 } from './actions.js';
 import { loadSample } from './sample.js';
@@ -55,12 +56,25 @@ const ACTS = {
   edittx: el => {
     const x = state.data.transactions.find(v => v.id === el.dataset.id);
     if (!x) return;
-    openSheet(t(x.type === 'transfer' ? 'edit_transfer' : x.type === 'card_payment' ? 'card_pay_title' : 'edit_entry'), txForm(x));
+    const d = x.type === 'debt' ? state.data.debts.find(v => v.id === x.debt_id) : null;
+    const title = x.type === 'transfer' ? t('edit_transfer') : x.type === 'card_payment' ? t('card_pay_title')
+      : d && x.repayment ? debtPayTitle(d) : t('edit_entry');
+    openSheet(title, txForm(x));
     updateTxFormBits(sheetForm());
   },
   transfer: () => { openAdd('detailed', { type: 'transfer' }); updateTxFormBits(sheetForm()); },
   paycard: el => openSheet(t('card_pay_title'), cardPayForm(null, { card_id: el.dataset.id, stmt: el.dataset.stmt, amount: Number(el.dataset.amt) })),
   newacc: () => openSheet(t('add_account'), accountForm(null)),
+  newloan: () => openSheet(t('add_loan'), loanForm(null)),
+  editloan: el => { openSheet(t('edit_loan'), loanForm(state.data.loans.find(v => v.id === el.dataset.id))); updateLoanFormBits(sheetForm()); },
+  loancalc: () => calcLoan(sheetForm()),
+  payloan: el => payLoan(el.dataset.id, el.dataset.due),
+  unpayloan: el => unpayLoan(el.dataset.id, el.dataset.due),
+  newdebt: () => openSheet(t('add_debt'), debtForm(null)),
+  editdebt: el => openSheet(t('edit_entry'), debtForm(state.data.debts.find(v => v.id === el.dataset.id))),
+  debtpay: el => { const d = state.data.debts.find(v => v.id === el.dataset.id); if (d) openSheet(debtPayTitle(d), debtPayForm(d, null)); },
+  'goto-loans': () => goTo('pay', 'loans'),
+  'goto-wallet': () => goTo('wallet'),
   editacc: el => openSheet(t('edit_account'), accountForm(accountById(el.dataset.id))),
   acctx: el => { closeSheet(); state.txFilter = { q: '', type: 'all', cat: null, acc: el.dataset.id }; goTo('tx'); },
   clearacc: () => { state.txFilter.acc = null; render(); },
@@ -119,6 +133,7 @@ document.addEventListener('input', e => {
     updateTxFormBits(el.form);
   }
   else if (el.form?.dataset.form === 'inst') updateInstFormBits(el.form, el.name);
+  else if (el.form?.dataset.form === 'loan') updateLoanFormBits(el.form);
 });
 
 // Switching Expense / Income / Transfer redraws a new entry's form, keeping what was typed
@@ -149,6 +164,7 @@ document.addEventListener('change', e => {
   else if (form === 'tx' || form === 'transfer') updateTxFormBits(f);
   else if (form === 'inst') updateInstFormBits(f, el.name);
   else if (form === 'account' && el.name === 'kind') updateAccFormBits(f);
+  else if (form === 'debt' && el.name === 'moved') { const r = f.querySelector('[data-role=accrow]'); if (r) r.hidden = !el.checked; }
 });
 
 $('#import-file').addEventListener('change', e => {

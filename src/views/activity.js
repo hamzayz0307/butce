@@ -36,6 +36,13 @@ function txRow(x, withDate = false) {
       <div class="row-main"><div class="row-title">${esc(x.note || route)}</div><div class="row-meta">${line(x.note ? route : t('type_transfer'))}</div></div>
       <div class="row-amt amt-save">${fmt(x.amount)}</div></button>`;
   }
+  if (x.type === 'debt') {
+    const d = state.data.debts.find(v => v.id === x.debt_id), acc = accountById(x.account_id);
+    const what = x.repayment ? (x.amount > 0 ? 'debt_tx_collected' : 'debt_tx_repaid') : (x.amount < 0 ? 'debt_tx_lent' : 'debt_tx_borrowed');
+    return `<button class="row" data-act="edittx" data-id="${x.id}">${ico({ emoji: '🤝', color: '#B65A86' })}
+      <div class="row-main"><div class="row-title">${esc(d?.person || x.note || '')}</div><div class="row-meta">${line(t(what), acc?.name || '')}</div></div>
+      <div class="row-amt ${x.amount > 0 ? 'amt-in' : ''}">${x.amount > 0 ? '+' : '−'}${fmt(Math.abs(x.amount))}</div></button>`;
+  }
   if (x.type === 'card_payment') {
     const card = cardById(x.card_id), acc = accountById(x.account_id);
     return `<button class="row" data-act="edittx" data-id="${x.id}">${ico({ emoji: '💳', color: '#4C7DBF' })}

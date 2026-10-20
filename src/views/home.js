@@ -6,7 +6,7 @@ import { curPeriod, periodTitle, periodLength, dayInPeriod, startDay } from '../
 import { fmt, pct } from '../format.js';
 import { monthStats, spentByCatUpTo, upcomingItems, isEmptyApp, billPaidTx } from '../model.js';
 import { GUILLOCHE, sec, ico, dueLabel } from './components.js';
-import { billRow, loadChart, cardPayBtn } from './payments.js';
+import { billRow, loadChart, cardPayBtn, loanRow } from './payments.js';
 
 export function viewHome() {
   if (isEmptyApp()) return emptyHome();
@@ -43,23 +43,23 @@ function hero(st, key) {
     unit = t('per_day');
     if (st.remaining > 0) {
       amount = fmt(st.remaining / left, { dec: 0 });
-      sub = left === 1 ? t('hero_last_day', { amt: fmt(st.remaining) })
-        : t(startDay() === 1 ? 'hero_sub' : 'hero_sub_p', { n: left, amt: fmt(st.remaining) });
+      sub = left === 1 ? t('hero_last_day', { amt: fmt(st.remaining, { dec: 0 }) })
+        : t(startDay() === 1 ? 'hero_sub' : 'hero_sub_p', { n: left, amt: fmt(st.remaining, { dec: 0 }) });
     } else {
       amount = fmt(0, { dec: 0 });
-      sub = t('hero_over', { amt: fmt(-st.remaining) });
+      sub = t('hero_over', { amt: fmt(-st.remaining, { dec: 0 }) });
     }
     runway = runwayHtml(spentPct, d / len * 100, true);
   } else if (st.rel === 'past') {
     if (!st.hasData) { label = t('hero_empty_label'); amount = '—'; sub = ''; }
     else {
-      label = t('hero_past_label'); amount = fmt(st.remaining);
-      sub = st.remaining >= 0 ? t('hero_past_pos', { amt: fmt(st.remaining) }) : t('hero_past_neg', { amt: fmt(-st.remaining) });
+      label = t('hero_past_label'); amount = fmt(st.remaining, { dec: 0 });
+      sub = st.remaining >= 0 ? t('hero_past_pos', { amt: fmt(st.remaining, { dec: 0 }) }) : t('hero_past_neg', { amt: fmt(-st.remaining, { dec: 0 }) });
       runway = runwayHtml(spentPct, 100, false);
     }
   } else {
-    label = t('hero_future_label'); amount = fmt(st.inst + st.pending);
-    sub = t('hero_future_sub', { amt: fmt(st.remaining) });
+    label = t('hero_future_label'); amount = fmt(st.inst + st.pending, { dec: 0 });
+    sub = t('hero_future_sub', { amt: fmt(st.remaining, { dec: 0 }) });
   }
   return `<section class="note" aria-label="${esc(label)}">${GUILLOCHE}
     <div class="note-label">${label}</div>
@@ -88,16 +88,23 @@ function figures(st) {
     <div class="fig"><span>${t('fig_income')}${st.usesExpected ? `<em>${t('expected')}</em>` : ''}</span><b>${fmt(st.income)}</b></div>
     <div class="fig"><span>${t('fig_spent')}</span><b>${fmt(st.spent)}</b>${st.inst > 0 && st.rel !== 'past' ? `<small>${t('incl_inst', { amt: fmt(st.inst) })}</small>` : ''}</div>
     ${third}
-    <div class="fig"><span>${t('fig_saved')}</span><b>${fmt(st.saved)}</b></div></div>`;
+    <div class="fig"><span>${t('fig_saved')}</span><b>${fmt(st.saved)}</b></div>
+    ${st.debtNet ? `<div class="fig" style="grid-column:1/-1"><span>${t('fig_debt')}</span><b>${st.debtNet > 0 ? '+' : '−'}${fmt(Math.abs(st.debtNet))}</b></div>` : ''}</div>`;
 }
 
 function upcomingSec() {
   const items = upcomingItems();
-  const body = items.length ? `<div class="list">${items.map(it => it.kind === 'bill' ? billRow(it.b, it.key, true) : `
-      <div class="row">${ico({ emoji: '💳', color: '#4C7DBF' })}
+  const row = it => {
+    if (it.kind === 'bill') return billRow(it.b, it.key, true);
+    if (it.kind === 'loan') return loanRow(it.loan, it.key, true);
+    if (it.kind === 'debt') return `<div class="row">${ico({ emoji: '🤝', color: '#B65A86' })}
+        <button class="row-main" data-act="goto-wallet"><div class="row-title">${esc(it.d.person)}</div><div class="row-meta">${t('you_owe')}, ${dueLabel(it.due)}</div></button>
+        <div class="row-amt">${fmt(it.amount)}</div><button class="btn ghost small" data-act="debtpay" data-id="${it.d.id}">${t('debt_repay')}</button></div>`;
+    return `<div class="row">${ico({ emoji: '💳', color: '#4C7DBF' })}
         <button class="row-main" data-act="goto-cards"><div class="row-title">${esc(t('card_due', { name: it.c.name }))}</div><div class="row-meta">${dueLabel(it.due)}</div></button>
-        <div class="row-amt">${fmt(it.amount)}<small>${t('est_statement')}</small></div>${cardPayBtn(it.c, it.stmt, it.amount, null)}</div>`).join('')}</div>`
-    : `<p class="empty-line">${t('no_upcoming')}</p>`;
+        <div class="row-amt">${fmt(it.amount)}<small>${t('est_statement')}</small></div>${cardPayBtn(it.c, it.stmt, it.amount, null)}</div>`;
+  };
+  const body = items.length ? `<div class="list">${items.map(row).join('')}</div>` : `<p class="empty-line">${t('no_upcoming')}</p>`;
   return sec(t('sec_upcoming'), body);
 }
 
@@ -155,6 +162,6 @@ function insightsSec(key, st) {
 }
 
 function loadSec(key) {
-  if (!state.data.installments.length) return '';
-  return sec(t('sec_load'), loadChart(addMonths(key, 1)), `<button class="link" data-act="goto-inst">${t('see_all')}</button>`);
+  if (!state.data.installments.length && !state.data.loans.length) return '';
+  return sec(t('sec_load'), loadChart(addMonths(key, 1)), `<button class="link" data-act="${state.data.installments.length ? 'goto-inst' : 'goto-loans'}">${t('see_all')}</button>`);
 }

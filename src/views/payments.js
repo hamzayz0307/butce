@@ -1,18 +1,20 @@
-// Payments tab: recurring bills, installment purchases, credit cards.
+// Payments tab: recurring bills, installment purchases, bank loans, credit cards.
 import { state, catById, cardById } from '../state.js';
 import { t } from '../i18n.js';
 import { esc, r2, today, addMonths } from '../utils.js';
 import { fmt, pct, monthName, monthShort, dateShort } from '../format.js';
 import {
   portionFor, portionsInMonth, planEnd, planPaidThrough, planRemaining,
-  billsForMonth, billDue, billPaidTx, nextStatement, prevStatement, dueFor, statementAmount, cardPaidTx
+  billsForMonth, billDue, billPaidTx, nextStatement, prevStatement, dueFor, statementAmount, cardPaidTx,
+  loanPaymentIn, loanPaymentsIn, loanPaidTx, loanLeft, loanEnd
 } from '../model.js';
+import { curPeriod, periodStart } from '../period.js';
 import { ico, dueLabel } from './components.js';
 
 export function viewPay() {
   const b = (v, label) => `<button data-act="paytab" data-v="${v}" aria-pressed="${state.payTab === v}">${label}</button>`;
-  const body = state.payTab === 'bills' ? payBills() : state.payTab === 'inst' ? payInst() : payCards();
-  return `<div class="seg" role="group">${b('bills', t('seg_bills'))}${b('inst', t('seg_inst'))}${b('cards', t('seg_cards'))}</div>${body}`;
+  const body = { bills: payBills, inst: payInst, loans: payLoans, cards: payCards }[state.payTab]();
+  return `<div class="seg seg-4" role="group">${b('bills', t('seg_bills'))}${b('inst', t('seg_inst'))}${b('loans', t('seg_loans'))}${b('cards', t('seg_cards'))}</div>${body}`;
 }
 
 // The last closed statement while it can still be paid (or was paid)
@@ -44,11 +46,13 @@ export function billRow(b, key, withDue) {
     <div class="row-amt">${fmt(paidTx ? paidTx.amount : b.amount)}</div>${action}</div>`;
 }
 
-// Installment total per month for 6 months starting at `startKey`
+// Installments plus loan payments per month, for 6 months starting at `startKey`
 export function loadChart(startKey, months = 6) {
   const data = Array.from({ length: months }, (_, i) => {
     const k = addMonths(startKey, i);
-    return { k, v: r2(portionsInMonth(k).reduce((s, p) => s + p.amount, 0)) };
+    const inst = r2(portionsInMonth(k).reduce((s, p) => s + p.amount, 0));
+    const loan = r2(loanPaymentsIn(k).reduce((s, { p }) => s + p.amount, 0));
+    return { k, inst, loan, v: r2(inst + loan) };
   });
   const max = Math.max(...data.map(d => d.v));
   if (max <= 0) return `<p class="empty-line">${t('load_none')}</p>`;
@@ -59,7 +63,39 @@ export function loadChart(startKey, months = 6) {
       <i style="height:${(d.v / max * 100).toFixed(1)}%"></i></button>`).join('')}</div>
     <div class="col-x" aria-hidden="true">${data.map(d => `<span>${monthShort(d.k)}</span>`).join('')}</div>
     <div class="chart-cap"><span>${monthName(sel.k)}</span><b>${fmt(sel.v)}</b></div>
+    ${sel.inst > 0 && sel.loan > 0 ? `<p class="hint" style="margin-top:2px">${t('load_split', { inst: fmt(sel.inst), loan: fmt(sel.loan) })}</p>` : ''}
     ${fixed > 0 ? `<p class="hint">${t('load_bills', { amt: fmt(fixed) })}</p>` : ''}</div>`;
+}
+
+export function loanRow(loan, key, withDue) {
+  const p = loanPaymentIn(loan, key), paidTx = p && loanPaidTx(loan, p.due), left = loanLeft(loan);
+  const c = catById(loan.category_id) || { emoji: '🏦', color: '#4C7DBF' };
+  const meta = !p ? t('loan_none_this') : paidTx ? esc(t('paid_on', { date: dateShort(paidTx.date) })) : dueLabel(p.due);
+  const action = !p ? '' : paidTx
+    ? `<button class="pill-paid" data-act="unpayloan" data-id="${loan.id}" data-due="${p.due}" aria-label="${esc(t('unmark_aria', { name: loan.name }))}">${t('paid')}</button>`
+    : `<button class="btn ghost small" data-act="payloan" data-id="${loan.id}" data-due="${p.due}" aria-label="${esc(t('mark_paid_aria', { name: loan.name }))}">${t('paid_it')}</button>`;
+  const title = withDue ? t('loan_due_title', { name: loan.name }) : loan.name;
+  const progress = withDue ? '' : `<div class="row-meta">${esc(t('loan_progress', { paid: left.paid, n: loan.count, amt: fmt(left.amount) }))}</div>
+      <div class="bar"><i class="prog" style="width:${(left.paid / loan.count * 100).toFixed(1)}%"></i></div>`;
+  return `<div class="row">${ico(c)}
+    <button class="row-main" data-act="editloan" data-id="${loan.id}">
+      <div class="row-title">${esc(title)}</div><div class="row-meta">${meta}</div>${progress}</button>
+    <div class="row-amt">${fmt(p ? p.amount : loan.payment)}</div>${action}</div>`;
+}
+
+function payLoans() {
+  const key = state.month, loans = state.data.loans;
+  if (!loans.length) return `<div class="empty" style="margin-top:16px"><p>${t('no_loans')}</p><button class="btn primary" data-act="newloan">${t('add_loan')}</button></div>`;
+  const start = periodStart(curPeriod());
+  const done = loans.filter(l => loanLeft(l).count === 0 && loanEnd(l) < start);
+  const active = loans.filter(l => !done.includes(l)).sort((a, b) => loanEnd(a).localeCompare(loanEnd(b)));
+  const thisMonth = loanPaymentsIn(key).reduce((s, { p }) => s + p.amount, 0);
+  const left = active.reduce((s, l) => s + loanLeft(l).amount, 0);
+  return `<div class="figs"><div class="fig"><span>${t('loans_this')}</span><b>${fmt(thisMonth)}</b></div>
+      <div class="fig"><span>${t('loans_left')}</span><b>${fmt(left)}</b></div></div>
+    ${active.length ? `<div class="list" style="margin-top:8px">${active.map(l => loanRow(l, key, false)).join('')}</div>` : ''}
+    ${done.length ? `<div class="day-head"><span>${t('loans_done', { n: done.length })}</span></div><div class="list">${done.map(l => loanRow(l, key, false)).join('')}</div>` : ''}
+    <button class="btn ghost wide" data-act="newloan" style="margin-top:12px">${t('add_loan')}</button>`;
 }
 
 function payBills() {

@@ -127,6 +127,7 @@ button{cursor:pointer}
 .seg>label{padding:0}
 .seg>label span{display:block;padding:8px 6px;border-radius:9px}
 .seg-wrap{flex-wrap:wrap}
+.seg-4>button{padding:8px 2px;font-size:13.5px}
 .seg-wrap>label{flex:1 1 30%}
 .seg>button[aria-pressed="true"],.seg input:checked+span{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
 .seg input:focus-visible+span{outline:2px solid var(--accent)}
@@ -147,6 +148,7 @@ button{cursor:pointer}
 .btn.small{height:36px;border-radius:11px;padding:0 13px;font-size:13.5px}
 .btn:disabled{opacity:.45;cursor:default}
 .btn.wide{width:100%}
+.pill-static{display:inline-flex;align-items:center;white-space:nowrap}
 .pill-paid{height:36px;border-radius:11px;padding:0 12px;border:0;font-weight:700;font-size:13.5px;background:color-mix(in srgb,var(--pos) 15%,transparent);color:var(--pos)}
 
 /* forms */
@@ -166,6 +168,8 @@ button{cursor:pointer}
 .qp .row{min-height:54px}
 .qp select{max-width:150px;height:34px;border-radius:10px;border:1px solid var(--line);background:var(--paper);font-size:13.5px;padding:0 8px}
 .set-group{margin-top:22px}
+.calc{margin-top:14px;border:1px solid var(--line);border-radius:14px;padding:2px 14px 14px}
+.calc summary{cursor:pointer;font-weight:700;color:var(--accent);padding:10px 0 4px}
 .set-group h4{margin:0 0 4px;font:600 15px var(--display)}
 .pick-set{border:0;padding:0;margin-inline:0;min-width:0}
 .pick-set legend{display:block;padding:0;font-size:13px;font-weight:700;color:var(--muted);margin-bottom:6px}

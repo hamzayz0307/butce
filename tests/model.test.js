@@ -11,7 +11,7 @@ const world = { id: 'c2', name: 'World', statement_day: 22, due_day: 2 };
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date(2026, 9, 16, 12)); // 16 Oct 2026
-  state.data = { transactions: [], categories: [], bills: [], installments: [], cards: [bonus, world], goals: [], accounts: [] };
+  state.data = { transactions: [], categories: [], bills: [], installments: [], cards: [bonus, world], goals: [], accounts: [], loans: [], debts: [] };
   state.settings = { ...state.settings, expected_income: 10000 };
 });
 afterEach(() => vi.useRealTimers());

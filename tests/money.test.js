@@ -7,7 +7,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date(2026, 9, 20, 12)); // 20 Oct 2026
   state.settings = { ...state.settings, currency: 'TRY', period_start_day: 1, expected_income: 0, rates: { USD: 40, EUR: 46, XAU: 4000 } };
-  state.data = { transactions: [], categories: [], bills: [], installments: [], cards: [], goals: [], accounts: [] };
+  state.data = { transactions: [], categories: [], bills: [], installments: [], cards: [], goals: [], accounts: [], loans: [], debts: [] };
 });
 afterEach(() => vi.useRealTimers());
 

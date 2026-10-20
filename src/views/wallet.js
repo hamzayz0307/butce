@@ -3,17 +3,20 @@ import { state, accountsList, accEmoji, defaultAccount } from '../state.js';
 import { t } from '../i18n.js';
 import { esc, curMonth, monthDiff } from '../utils.js';
 import { fmt, monthName } from '../format.js';
-import { accountBalance, accountValue, goalSaved, netWorth } from '../model.js';
+import { accountBalance, accountValue, goalSaved, netWorth, debtLeft } from '../model.js';
 import { isBaseCurrency, fmtUnits, altValues, fromBase } from '../money.js';
-import { sec, ico, GUILLOCHE } from './components.js';
+import { sec, ico, GUILLOCHE, dueLabel } from './components.js';
 
 export function viewWallet() {
-  return (state.data.accounts.length ? worthHero() : '') + accountsSec() + goalsSec();
+  const any = state.data.accounts.length || state.data.loans.length || state.data.debts.length;
+  return (any ? worthHero() : '') + accountsSec() + debtsSec() + goalsSec();
 }
 
 function worthHero() {
   const nw = netWorth();
   const alt = altValues(nw.net);
+  const owed = [['cards', 'nw_p_cards'], ['loans', 'nw_p_loans'], ['borrowed', 'nw_p_people']]
+    .filter(([k]) => nw.parts[k] > 0).map(([k, key]) => t(key, { amt: fmt(nw.parts[k], { dec: 0 }) })).join(', ');
   return `<section class="note" aria-label="${esc(t('net_worth'))}">${GUILLOCHE}
     <div class="note-label">${t('net_worth')}</div>
     <p class="note-amount"><span>${fmt(nw.net, { dec: 0 })}</span></p>
@@ -21,8 +24,8 @@ function worthHero() {
     ${nw.missing ? `<p class="note-sub">${t('nw_missing')}</p><div class="note-actions"><button class="btn on-note" data-act="fetchrate">${t('s_fetch')}</button></div>` : ''}
   </section>
   <div class="figs">
-    <div class="fig"><span>${t('nw_assets')}</span><b>${fmt(nw.assets, { dec: 0 })}</b></div>
-    <div class="fig"><span>${t('nw_debts')}</span><b>${fmt(nw.liabilities, { dec: 0 })}</b>${nw.parts.cards > 0 ? `<small>${t('nw_cards_incl')}</small>` : ''}</div>
+    <div class="fig"><span>${t('nw_assets')}</span><b>${fmt(nw.assets, { dec: 0 })}</b>${nw.parts.lent > 0 ? `<small>${t('nw_lent_incl', { amt: fmt(nw.parts.lent, { dec: 0 }) })}</small>` : ''}</div>
+    <div class="fig"><span>${t('nw_debts')}</span><b>${fmt(nw.liabilities, { dec: 0 })}</b>${owed ? `<small>${owed}</small>` : ''}</div>
   </div>`;
 }
 
@@ -45,6 +48,28 @@ function accountsSec() {
       <div class="grid2" style="gap:8px;margin-top:12px">
         <button class="btn ghost" data-act="transfer" ${accs.length < 2 ? 'disabled' : ''}>${t('new_transfer')}</button>
         <button class="btn ghost" data-act="newacc">${t('add_account')}</button></div>`)}`;
+}
+
+function debtsSec() {
+  const ds = state.data.debts;
+  const add = `<button class="link" data-act="newdebt">${t('add_short')}</button>`;
+  if (!ds.length) return sec(t('sec_debts'), `<div class="empty"><p>${t('no_debts')}</p><button class="btn ghost" data-act="newdebt">${t('add_debt')}</button></div>`);
+  const open = ds.filter(d => debtLeft(d) > 0).sort((a, b) => (a.due_date || '9999').localeCompare(b.due_date || '9999'));
+  const closed = ds.filter(d => debtLeft(d) <= 0);
+  const sum = dir => open.filter(d => d.direction === dir).reduce((s, d) => s + debtLeft(d), 0);
+  const row = d => {
+    const left = debtLeft(d), lent = d.direction === 'lent';
+    const meta = [lent ? t('owes_you') : t('you_owe'), d.due_date && left > 0 ? dueLabel(d.due_date) : '', esc(d.note || '')].filter(Boolean).join(', ');
+    const action = left > 0
+      ? `<button class="btn ghost small" data-act="debtpay" data-id="${d.id}">${t(lent ? 'debt_collect' : 'debt_repay')}</button>`
+      : `<span class="pill-paid pill-static">${t('debt_closed')}</span>`;
+    return `<div class="row">${ico({ emoji: '🤝', color: lent ? '#2F7D68' : '#B65A86' })}
+      <button class="row-main" data-act="editdebt" data-id="${d.id}"><div class="row-title">${esc(d.person)}</div><div class="row-meta">${meta}</div></button>
+      <div class="row-amt ${left > 0 ? (lent ? 'amt-in' : '') : 'amt-save'}">${fmt(left > 0 ? left : d.amount)}</div>${action}</div>`;
+  };
+  return sec(t('sec_debts'), `<p class="sec-sub">${t('debts_sum', { lent: `<b>${fmt(sum('lent'))}</b>`, borrowed: `<b>${fmt(sum('borrowed'))}</b>` })}</p>
+    ${open.length ? `<div class="list">${open.map(row).join('')}</div>` : ''}
+    ${closed.length ? `<div class="day-head"><span>${t('debts_done', { n: closed.length })}</span></div><div class="list">${closed.map(row).join('')}</div>` : ''}`, add);
 }
 
 function goalsSec() {
